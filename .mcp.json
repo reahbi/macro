@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "vooster-ai": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "--package=@vooster/mcp@latest",
+        "vooster-ai",
+        "--api-key=ak_arb850vwbd36cacmyp86xiah"
+      ]
+    }
+  }
+}
