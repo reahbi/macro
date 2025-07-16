@@ -1,0 +1,38 @@
+{
+  "app": {
+    "name": "엑셀 매크로 자동화",
+    "description": "엑셀 기반 작업 자동화 도구"
+  },
+  "menu": {
+    "file": "파일",
+    "edit": "편집",
+    "view": "보기",
+    "help": "도움말",
+    "new_project": "새 프로젝트",
+    "open_project": "프로젝트 열기",
+    "save_project": "프로젝트 저장",
+    "exit": "종료",
+    "settings": "설정",
+    "toggle_theme": "테마 전환",
+    "about": "정보"
+  },
+  "tabs": {
+    "excel": "엑셀",
+    "editor": "편집기",
+    "run": "실행"
+  },
+  "status": {
+    "ready": "준비",
+    "running": "실행 중",
+    "paused": "일시정지",
+    "stopped": "중지됨",
+    "error": "오류"
+  },
+  "dialog": {
+    "confirm_exit": "종료하시겠습니까?",
+    "yes": "예",
+    "no": "아니오",
+    "ok": "확인",
+    "cancel": "취소"
+  }
+}

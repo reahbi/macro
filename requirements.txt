@@ -1,0 +1,41 @@
+# Core GUI Framework
+PyQt5==5.15.10
+PyQt5-Qt5==5.15.2
+PyQt5-sip==12.13.0
+
+# Automation Tools
+pyautogui==0.9.54
+pillow==10.2.0
+python-xlib==0.33; sys_platform == 'linux'
+pyobjc-core==10.1; sys_platform == 'darwin'
+pyobjc==10.1; sys_platform == 'darwin'
+
+# Image Processing & OCR
+opencv-python==4.9.0.80
+numpy==1.24.4
+easyocr==1.7.1
+torch==2.1.2
+torchvision==0.16.2
+
+# Excel Processing
+pandas==2.0.3
+openpyxl==3.1.2
+xlrd==2.0.1
+
+# Security & Encryption
+cryptography==42.0.2
+
+# Development Tools
+pytest==8.0.0
+pytest-qt==4.4.0
+black==24.1.1
+flake8==7.0.0
+mypy==1.8.0
+
+# Packaging
+pyinstaller==6.3.0
+
+# Utilities
+python-dotenv==1.0.1
+pyyaml==6.0.1
+click==8.1.7

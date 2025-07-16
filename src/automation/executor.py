@@ -1,0 +1,326 @@
+"""
+Step executor for macro steps
+"""
+
+import re
+import time
+import os
+from typing import Dict, Any, Optional, Tuple
+import pyautogui
+from core.macro_types import MacroStep, StepType
+from config.settings import Settings
+from logger.app_logger import get_logger
+
+class StepExecutor:
+    """Executes individual macro steps"""
+    
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.logger = get_logger(__name__)
+        self.variables: Dict[str, Any] = {}
+        
+        # Initialize image matcher
+        self._image_matcher = None
+        self._init_image_matcher()
+        
+        # Initialize text extractor
+        self._text_extractor = None
+        self._init_text_extractor()
+        
+        # Step handlers mapping
+        self._handlers = {
+            StepType.MOUSE_CLICK: self._execute_mouse_click,
+            StepType.MOUSE_MOVE: self._execute_mouse_move,
+            StepType.MOUSE_DRAG: self._execute_mouse_drag,
+            StepType.MOUSE_SCROLL: self._execute_mouse_scroll,
+            StepType.KEYBOARD_TYPE: self._execute_keyboard_type,
+            StepType.KEYBOARD_HOTKEY: self._execute_keyboard_hotkey,
+            StepType.WAIT_TIME: self._execute_wait_time,
+            StepType.WAIT_IMAGE: self._execute_wait_image,
+            StepType.SCREENSHOT: self._execute_screenshot,
+            StepType.IMAGE_SEARCH: self._execute_image_search,
+            StepType.OCR_TEXT: self._execute_text_search,
+            StepType.IF_CONDITION: self._execute_if_condition,
+            StepType.LOOP: self._execute_loop,
+        }
+        
+    def _init_image_matcher(self):
+        """Initialize image matcher with fallback"""
+        try:
+            from vision.image_matcher import ImageMatcher
+            self._image_matcher = ImageMatcher(self.settings)
+            self.logger.info("Using OpenCV-based image matcher")
+        except ImportError:
+            self.logger.warning("OpenCV not available, using pyautogui fallback")
+            self._image_matcher = None
+            
+    def _init_text_extractor(self):
+        """Initialize text extractor with fallback"""
+        try:
+            from vision.text_extractor import TextExtractor
+            self._text_extractor = TextExtractor()
+            self.logger.info("Using EasyOCR-based text extractor")
+        except ImportError:
+            self.logger.warning("EasyOCR not available, text search disabled")
+            self._text_extractor = None
+        
+    def set_variables(self, variables: Dict[str, Any]):
+        """Set variables for template substitution"""
+        self.variables = variables
+        
+    def execute_step(self, step: MacroStep) -> Any:
+        """Execute a single step"""
+        handler = self._handlers.get(step.step_type)
+        if not handler:
+            raise NotImplementedError(f"No handler for step type: {step.step_type}")
+            
+        self.logger.debug(f"Executing step: {step.name} ({step.step_type.value})")
+        
+        try:
+            result = handler(step)
+            return result
+        except Exception as e:
+            self.logger.error(f"Step execution failed: {e}")
+            raise
+            
+    def _substitute_variables(self, text: str) -> str:
+        """Substitute variables in text"""
+        if not text:
+            return text
+            
+        # Find all {{variable}} patterns
+        pattern = r'\{\{(\w+)\}\}'
+        
+        def replacer(match):
+            var_name = match.group(1)
+            if var_name in self.variables:
+                return str(self.variables[var_name])
+            return match.group(0)  # Keep original if not found
+            
+        return re.sub(pattern, replacer, text)
+        
+    def _get_absolute_position(self, x: int, y: int, relative_to: str) -> Tuple[int, int]:
+        """Convert coordinates to absolute screen position"""
+        if relative_to == "screen":
+            return x, y
+        elif relative_to == "window":
+            # TODO: Implement window-relative coordinates
+            # For now, treat as screen coordinates
+            return x, y
+        elif relative_to == "image":
+            # TODO: Implement image-relative coordinates
+            # For now, treat as screen coordinates
+            return x, y
+        else:
+            return x, y
+            
+    # Mouse handlers
+    
+    def _execute_mouse_click(self, step) -> None:
+        """Execute mouse click"""
+        x, y = self._get_absolute_position(step.x, step.y, step.relative_to)
+        
+        pyautogui.click(
+            x=x,
+            y=y,
+            clicks=step.clicks,
+            interval=step.interval,
+            button=step.button.value
+        )
+        
+    def _execute_mouse_move(self, step) -> None:
+        """Execute mouse move"""
+        x, y = self._get_absolute_position(step.x, step.y, step.relative_to)
+        
+        if step.duration > 0:
+            pyautogui.moveTo(x, y, duration=step.duration)
+        else:
+            pyautogui.moveTo(x, y)
+            
+    def _execute_mouse_drag(self, step) -> None:
+        """Execute mouse drag"""
+        # This would need to be implemented with proper drag coordinates
+        # For now, using simple drag
+        x, y = self._get_absolute_position(step.x, step.y, step.relative_to)
+        pyautogui.dragTo(x, y, duration=step.duration, button=step.button.value)
+        
+    def _execute_mouse_scroll(self, step) -> None:
+        """Execute mouse scroll"""
+        pyautogui.scroll(step.clicks)
+        
+    # Keyboard handlers
+    
+    def _execute_keyboard_type(self, step) -> None:
+        """Execute keyboard typing"""
+        text = step.text
+        
+        # Substitute variables if enabled
+        if step.use_variables:
+            text = self._substitute_variables(text)
+            
+        pyautogui.typewrite(text, interval=step.interval)
+        
+    def _execute_keyboard_hotkey(self, step) -> None:
+        """Execute keyboard hotkey"""
+        if step.keys:
+            pyautogui.hotkey(*step.keys)
+            
+    # Wait handlers
+    
+    def _execute_wait_time(self, step) -> None:
+        """Execute time wait"""
+        time.sleep(step.seconds)
+        
+    def _execute_wait_image(self, step) -> Optional[Tuple[int, int, int, int]]:
+        """Execute wait for image"""
+        if self._image_matcher:
+            # Use OpenCV-based matcher
+            result = self._image_matcher.wait_for_image(
+                step.image_path,
+                timeout=step.timeout,
+                confidence=step.confidence,
+                region=step.region
+            )
+            
+            if result.found:
+                self.logger.debug(f"Image found at: {result.location}")
+                return result.location
+            else:
+                raise TimeoutError(f"Image not found within {step.timeout} seconds")
+        else:
+            # Fallback to pyautogui
+            start_time = time.time()
+            
+            while time.time() - start_time < step.timeout:
+                try:
+                    # Try to locate image
+                    location = pyautogui.locateOnScreen(
+                        step.image_path,
+                        confidence=step.confidence,
+                        region=step.region
+                    )
+                    
+                    if location:
+                        self.logger.debug(f"Image found at: {location}")
+                        return location
+                        
+                except Exception as e:
+                    self.logger.debug(f"Image search error: {e}")
+                    
+                time.sleep(0.5)  # Check every 500ms
+                
+            raise TimeoutError(f"Image not found within {step.timeout} seconds")
+        
+    # Screen handlers
+    
+    def _execute_screenshot(self, step) -> str:
+        """Execute screenshot"""
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        
+        # Create screenshots directory
+        screenshots_dir = os.path.join(
+            os.path.dirname(__file__), 
+            "../../screenshots"
+        )
+        os.makedirs(screenshots_dir, exist_ok=True)
+        
+        # Generate filename
+        filename = os.path.join(
+            screenshots_dir,
+            f"screenshot_{timestamp}.png"
+        )
+        
+        if self._image_matcher and hasattr(step, 'region') and step.region:
+            # Capture specific region
+            self._image_matcher.capture_region(step.region, filename)
+        else:
+            # Full screen capture
+            pyautogui.screenshot(filename)
+            
+        self.logger.info(f"Screenshot saved: {filename}")
+        return filename
+        
+    def _execute_image_search(self, step) -> Optional[Tuple[int, int, int, int]]:
+        """Execute image search"""
+        if self._image_matcher:
+            # Use OpenCV-based matcher
+            result = self._image_matcher.find_image(
+                step.image_path,
+                confidence=step.confidence,
+                region=step.region
+            )
+            
+            if result.found:
+                self.logger.debug(f"Image found at: {result.location}")
+                return result.location
+            else:
+                return None
+        else:
+            # Fallback to pyautogui
+            try:
+                location = pyautogui.locateOnScreen(
+                    step.image_path,
+                    confidence=step.confidence,
+                    region=step.region
+                )
+                return location
+            except:
+                return None
+            
+    def _execute_text_search(self, step) -> Optional[Tuple[int, int]]:
+        """Execute text search and optionally click"""
+        if not self._text_extractor:
+            raise RuntimeError("Text extractor not available (EasyOCR not installed)")
+            
+        # Get search text
+        search_text = step.search_text
+        
+        # If using Excel column, get value from variables
+        if step.excel_column and step.excel_column in self.variables:
+            search_text = str(self.variables[step.excel_column])
+            
+        if not search_text:
+            raise ValueError("No search text specified")
+            
+        # Replace variables in search text
+        search_text = self._replace_variables(search_text)
+        
+        self.logger.info(f"Searching for text: {search_text}")
+        
+        # Find text on screen
+        result = self._text_extractor.find_text(
+            search_text,
+            region=step.region,
+            exact_match=step.exact_match,
+            confidence_threshold=step.confidence
+        )
+        
+        if result:
+            self.logger.info(f"Text found at: {result.center}")
+            
+            # Click if requested
+            if step.click_after_find:
+                click_x = result.center[0] + step.click_offset[0]
+                click_y = result.center[1] + step.click_offset[1]
+                
+                pyautogui.click(click_x, click_y)
+                self.logger.debug(f"Clicked at: ({click_x}, {click_y})")
+                
+            return result.center
+        else:
+            self.logger.warning(f"Text not found: {search_text}")
+            return None
+    
+    # Flow control handlers
+    
+    def _execute_if_condition(self, step) -> bool:
+        """Execute if condition"""
+        # TODO: Implement condition evaluation
+        # For now, always return True
+        return True
+        
+    def _execute_loop(self, step) -> None:
+        """Execute loop"""
+        # TODO: Implement loop execution
+        # This would need to interact with the main engine
+        pass

@@ -1,0 +1,38 @@
+{
+  "app": {
+    "name": "Excel Macro Automation",
+    "description": "Excel-based task automation tool"
+  },
+  "menu": {
+    "file": "File",
+    "edit": "Edit",
+    "view": "View",
+    "help": "Help",
+    "new_project": "New Project",
+    "open_project": "Open Project",
+    "save_project": "Save Project",
+    "exit": "Exit",
+    "settings": "Settings",
+    "toggle_theme": "Toggle Theme",
+    "about": "About"
+  },
+  "tabs": {
+    "excel": "Excel",
+    "editor": "Editor",
+    "run": "Run"
+  },
+  "status": {
+    "ready": "Ready",
+    "running": "Running",
+    "paused": "Paused",
+    "stopped": "Stopped",
+    "error": "Error"
+  },
+  "dialog": {
+    "confirm_exit": "Are you sure you want to exit?",
+    "yes": "Yes",
+    "no": "No",
+    "ok": "OK",
+    "cancel": "Cancel"
+  }
+}

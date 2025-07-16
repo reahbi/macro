@@ -8,6 +8,12 @@
         "vooster-ai",
         "--api-key=ak_arb850vwbd36cacmyp86xiah"
       ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
     }
   }
 }
