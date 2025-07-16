@@ -499,6 +499,95 @@ class LoopStep(MacroStep):
             loop_steps=data.get("loop_steps", [])
         )
 
+# Additional Step Classes
+
+@dataclass
+class ImageSearchStep(MacroStep):
+    """Image search and click action"""
+    step_type: StepType = field(default=StepType.IMAGE_SEARCH, init=False)
+    image_path: str = ""
+    confidence: float = 0.9
+    region: Optional[tuple] = None  # (x, y, width, height)
+    click_after_find: bool = True
+    click_offset: Tuple[int, int] = (0, 0)
+    
+    def validate(self) -> List[str]:
+        errors = []
+        if not self.image_path:
+            errors.append("Image path cannot be empty")
+        if not 0 <= self.confidence <= 1:
+            errors.append("Confidence must be between 0 and 1")
+        return errors
+    
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "image_path": self.image_path,
+            "confidence": self.confidence,
+            "region": list(self.region) if self.region else None,
+            "click_after_find": self.click_after_find,
+            "click_offset": list(self.click_offset)
+        })
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ImageSearchStep':
+        region = data.get("region")
+        click_offset = data.get("click_offset", [0, 0])
+        return cls(
+            step_id=data.get("step_id", str(uuid.uuid4())),
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            enabled=data.get("enabled", True),
+            error_handling=ErrorHandling(data.get("error_handling", "stop")),
+            retry_count=data.get("retry_count", 0),
+            image_path=data.get("image_path", ""),
+            confidence=data.get("confidence", 0.9),
+            region=tuple(region) if region else None,
+            click_after_find=data.get("click_after_find", True),
+            click_offset=tuple(click_offset)
+        )
+
+@dataclass
+class ScreenshotStep(MacroStep):
+    """Take screenshot action"""
+    step_type: StepType = field(default=StepType.SCREENSHOT, init=False)
+    filename_pattern: str = "screenshot_{timestamp}.png"
+    save_directory: str = "./screenshots/"
+    region: Optional[tuple] = None  # (x, y, width, height)
+    
+    def validate(self) -> List[str]:
+        errors = []
+        if not self.filename_pattern:
+            errors.append("Filename pattern cannot be empty")
+        if not self.save_directory:
+            errors.append("Save directory cannot be empty")
+        return errors
+    
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "filename_pattern": self.filename_pattern,
+            "save_directory": self.save_directory,
+            "region": list(self.region) if self.region else None
+        })
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ScreenshotStep':
+        region = data.get("region")
+        return cls(
+            step_id=data.get("step_id", str(uuid.uuid4())),
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            enabled=data.get("enabled", True),
+            error_handling=ErrorHandling(data.get("error_handling", "stop")),
+            retry_count=data.get("retry_count", 0),
+            filename_pattern=data.get("filename_pattern", "screenshot_{timestamp}.png"),
+            save_directory=data.get("save_directory", "./screenshots/"),
+            region=tuple(region) if region else None
+        )
+
 # Step Factory
 
 class StepFactory:
@@ -511,6 +600,8 @@ class StepFactory:
         StepType.KEYBOARD_HOTKEY: KeyboardHotkeyStep,
         StepType.WAIT_TIME: WaitTimeStep,
         StepType.WAIT_IMAGE: WaitImageStep,
+        StepType.IMAGE_SEARCH: ImageSearchStep,
+        StepType.SCREENSHOT: ScreenshotStep,
         StepType.OCR_TEXT: TextSearchStep,
         StepType.IF_CONDITION: IfConditionStep,
         StepType.LOOP: LoopStep

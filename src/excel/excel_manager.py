@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any, Tuple
 import pandas as pd
 import openpyxl
 from logger.app_logger import get_logger
-from .models import (
+from excel.models import (
     ExcelFileInfo, SheetInfo, ColumnInfo, ColumnType, 
     ExcelData, ColumnMapping
 )

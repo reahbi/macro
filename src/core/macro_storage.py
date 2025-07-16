@@ -11,7 +11,7 @@ import shutil
 from enum import Enum
 from utils.encryption import EncryptionManager
 from logger.app_logger import get_logger
-from .macro_types import Macro
+from core.macro_types import Macro
 
 
 class MacroFormat(Enum):
@@ -261,7 +261,7 @@ class MacroStorage:
         
     def _create_basic_template(self) -> Macro:
         """Create basic automation template"""
-        from .macro_types import MouseClickStep, WaitTimeStep, KeyboardTypeStep
+        from core.macro_types import MouseClickStep, WaitTimeStep, KeyboardTypeStep
         
         macro = Macro(name="기본 자동화 템플릿")
         
@@ -290,7 +290,7 @@ class MacroStorage:
         
     def _create_web_template(self) -> Macro:
         """Create web automation template"""
-        from .macro_types import WaitTimeStep, KeyboardHotkeyStep, KeyboardTypeStep
+        from core.macro_types import WaitTimeStep, KeyboardHotkeyStep, KeyboardTypeStep
         
         macro = Macro(name="웹 자동화 템플릿")
         
@@ -315,7 +315,7 @@ class MacroStorage:
         
     def _create_excel_input_template(self) -> Macro:
         """Create Excel input template"""
-        from .macro_types import LoopStep, KeyboardTypeStep, KeyboardHotkeyStep
+        from core.macro_types import LoopStep, KeyboardTypeStep, KeyboardHotkeyStep
         
         macro = Macro(name="엑셀 데이터 입력 템플릿")
         

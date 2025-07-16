@@ -261,6 +261,30 @@ class MacroStepWidget(QFrame):
             if hasattr(self.step, 'false_steps'):
                 details.append(f"거짓: {len(self.step.false_steps)}개 단계")
                 
+        elif self.step.step_type == StepType.SCREENSHOT:
+            if hasattr(self.step, 'filename_pattern'):
+                details.append(f"파일명: {self.step.filename_pattern}")
+            if hasattr(self.step, 'save_directory'):
+                details.append(f"저장 경로: {self.step.save_directory}")
+            if hasattr(self.step, 'region') and self.step.region:
+                x, y, w, h = self.step.region
+                details.append(f"영역: ({x}, {y}) {w}x{h}")
+            else:
+                details.append("전체 화면")
+                
+        elif self.step.step_type == StepType.LOOP:
+            if hasattr(self.step, 'loop_type'):
+                loop_names = {
+                    "count": "횟수 반복",
+                    "while_image": "이미지 대기",
+                    "for_each_row": "행별 반복"
+                }
+                details.append(loop_names.get(self.step.loop_type, self.step.loop_type))
+            if hasattr(self.step, 'loop_count') and self.step.loop_type == "count":
+                details.append(f"{self.step.loop_count}회")
+            if hasattr(self.step, 'loop_steps'):
+                details.append(f"{len(self.step.loop_steps)}개 단계 반복")
+                
         return " | ".join(details) if details else ""
         
     def _on_enable_toggled(self, checked: bool):
@@ -405,9 +429,30 @@ class MacroFlowWidget(QWidget):
                 
         # Show empty label or steps
         if not self.macro.steps:
-            self.layout.addWidget(self.empty_label)
+            try:
+                if self.empty_label:
+                    self.layout.addWidget(self.empty_label)
+                    self.empty_label.show()
+            except RuntimeError:
+                # Empty label was deleted, recreate it
+                self.empty_label = QLabel("단계를 여기로 드래그하세요")
+                self.empty_label.setAlignment(Qt.AlignCenter)
+                self.empty_label.setStyleSheet("""
+                    QLabel {
+                        color: #999;
+                        font-size: 14px;
+                        padding: 50px;
+                        border: 2px dashed #ddd;
+                        border-radius: 5px;
+                    }
+                """)
+                self.layout.addWidget(self.empty_label)
         else:
-            self.empty_label.hide()
+            if self.empty_label:
+                try:
+                    self.empty_label.hide()
+                except RuntimeError:
+                    pass
             for i, step in enumerate(self.macro.steps):
                 widget = self._create_step_widget(step, i)
                 self.layout.insertWidget(i, widget)
@@ -434,90 +479,201 @@ class MacroFlowWidget(QWidget):
         if not step:
             return
             
-        # Open appropriate dialog based on step type
-        if step.step_type == StepType.WAIT_IMAGE:
-            from dialogs.image_step_dialog import WaitImageStepDialog
-            dialog = WaitImageStepDialog(step, parent=self)
-            if dialog.exec_() == QDialog.Accepted:
-                # Update step with new data
-                step_data = dialog.get_step_data()
-                step.name = step_data['name']
-                step.image_path = step_data['image_path']
-                step.timeout = step_data['timeout']
-                step.confidence = step_data['confidence']
-                step.region = step_data['region']
-                self._rebuild_ui()
-                self.stepEdited.emit(step_id)
+        try:
+            step_id = step.step_id  # Define step_id here
+            print(f"DEBUG: _on_step_edit called for step type: {step.step_type}")
+            
+            # Open appropriate dialog based on step type
+            if step.step_type == StepType.WAIT_IMAGE:
+                from ui.dialogs.image_step_dialog import WaitImageStepDialog
+                dialog = WaitImageStepDialog(step, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    # Update step with new data
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.image_path = step_data['image_path']
+                    step.timeout = step_data['timeout']
+                    step.confidence = step_data['confidence']
+                    step.region = step_data['region']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            elif step.step_type == StepType.IMAGE_SEARCH:
+                from ui.dialogs.image_step_dialog import ImageSearchStepDialog
+                dialog = ImageSearchStepDialog(step, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    # Update step with new data
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.image_path = step_data['image_path']
+                    step.confidence = step_data['confidence']
+                    step.region = step_data['region']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            elif step.step_type == StepType.OCR_TEXT:
+                from ui.dialogs.text_search_step_dialog import TextSearchStepDialog
+                # Get Excel columns from parent widget
+                excel_columns = []
+                parent = self.parent()
+                while parent:
+                    if hasattr(parent, 'excel_widget'):
+                        excel_manager = parent.excel_widget.get_excel_manager()
+                        if excel_manager and excel_manager._current_data is not None:
+                            excel_columns = list(excel_manager._current_data.columns)
+                        break
+                    parent = parent.parent()
+                    
+                dialog = TextSearchStepDialog(step, excel_columns, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    # Update step with new data
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.search_text = step_data['search_text']
+                    step.excel_column = step_data['excel_column']
+                    step.region = step_data['region']
+                    step.exact_match = step_data['exact_match']
+                    step.confidence = step_data['confidence']
+                    step.click_after_find = step_data['click_after_find']
+                    step.click_offset = step_data['click_offset']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            elif step.step_type == StepType.IF_CONDITION:
+                from ui.dialogs.if_condition_step_dialog import IfConditionStepDialog
+                # Get Excel columns from parent widget
+                excel_columns = []
+                parent = self.parent()
+                while parent:
+                    if hasattr(parent, 'excel_widget'):
+                        excel_manager = parent.excel_widget.get_excel_manager()
+                        if excel_manager and excel_manager._current_data is not None:
+                            excel_columns = list(excel_manager._current_data.columns)
+                        break
+                    parent = parent.parent()
+                    
+                dialog = IfConditionStepDialog(step, excel_columns, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    # Update step with new data
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.description = step_data['description']
+                    step.condition_type = step_data['condition_type']
+                    step.condition_value = step_data['condition_value']
+                    step.true_steps = step_data['true_steps']
+                    step.false_steps = step_data['false_steps']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            elif step.step_type == StepType.MOUSE_CLICK:
+                from ui.dialogs.mouse_click_step_dialog import MouseClickStepDialog
+                dialog = MouseClickStepDialog(step, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.x = step_data['x']
+                    step.y = step_data['y']
+                    step.button = step_data['button']
+                    step.clicks = step_data['clicks']
+                    step.interval = step_data['interval']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            elif step.step_type == StepType.MOUSE_MOVE:
+                from ui.dialogs.mouse_move_step_dialog import MouseMoveStepDialog
+                dialog = MouseMoveStepDialog(step, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.x = step_data['x']
+                    step.y = step_data['y']
+                    step.duration = step_data['duration']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            elif step.step_type == StepType.KEYBOARD_TYPE:
+                from ui.dialogs.keyboard_type_step_dialog import KeyboardTypeStepDialog
+                # Get Excel columns from parent widget
+                excel_columns = []
+                parent = self.parent()
+                while parent:
+                    if hasattr(parent, 'excel_widget'):
+                        excel_manager = parent.excel_widget.get_excel_manager()
+                        if excel_manager and excel_manager._current_data is not None:
+                            excel_columns = list(excel_manager._current_data.columns)
+                        break
+                    parent = parent.parent()
+                    
+                dialog = KeyboardTypeStepDialog(step, excel_columns, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.text = step_data['text']
+                    step.interval = step_data['interval']
+                    step.use_variables = step_data['use_variables']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            elif step.step_type == StepType.KEYBOARD_HOTKEY:
+                from ui.dialogs.keyboard_hotkey_step_dialog import KeyboardHotkeyStepDialog
+                dialog = KeyboardHotkeyStepDialog(step, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.keys = step_data['keys']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            elif step.step_type == StepType.WAIT_TIME:
+                print(f"DEBUG: Importing WaitTimeStepDialog")
+                from ui.dialogs.wait_time_step_dialog import WaitTimeStepDialog
+                print(f"DEBUG: Creating WaitTimeStepDialog")
+                dialog = WaitTimeStepDialog(step, parent=self)
+                print(f"DEBUG: Executing WaitTimeStepDialog")
+                if dialog.exec_() == QDialog.Accepted:
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.seconds = step_data['seconds']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            elif step.step_type == StepType.SCREENSHOT:
+                from ui.dialogs.screenshot_step_dialog import ScreenshotStepDialog
+                dialog = ScreenshotStepDialog(step, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.filename_pattern = step_data['filename_pattern']
+                    step.save_directory = step_data['save_directory']
+                    step.region = step_data['region']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            elif step.step_type == StepType.LOOP:
+                from ui.dialogs.loop_step_dialog import LoopStepDialog
+                # Get all steps in macro for selection
+                all_steps = self.macro.steps
+                dialog = LoopStepDialog(step, all_steps, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    step_data = dialog.get_step_data()
+                    step.name = step_data['name']
+                    step.loop_type = step_data['loop_type']
+                    step.loop_count = step_data['loop_count']
+                    step.loop_steps = step_data['loop_steps']
+                    if 'description' in step_data:
+                        step.description = step_data['description']
+                    self._rebuild_ui()
+                    self.stepEdited.emit(step)
+                    
+            else:
+                # For other step types, emit the signal as before
+                self.stepEdited.emit(step)
                 
-        elif step.step_type == StepType.IMAGE_SEARCH:
-            from dialogs.image_step_dialog import ImageSearchStepDialog
-            dialog = ImageSearchStepDialog(step, parent=self)
-            if dialog.exec_() == QDialog.Accepted:
-                # Update step with new data
-                step_data = dialog.get_step_data()
-                step.name = step_data['name']
-                step.image_path = step_data['image_path']
-                step.confidence = step_data['confidence']
-                step.region = step_data['region']
-                self._rebuild_ui()
-                self.stepEdited.emit(step_id)
-                
-        elif step.step_type == StepType.OCR_TEXT:
-            from dialogs.text_search_step_dialog import TextSearchStepDialog
-            # Get Excel columns from parent widget
-            excel_columns = []
-            parent = self.parent()
-            while parent:
-                if hasattr(parent, 'excel_widget'):
-                    excel_manager = parent.excel_widget.get_excel_manager()
-                    if excel_manager and excel_manager._current_data is not None:
-                        excel_columns = list(excel_manager._current_data.columns)
-                    break
-                parent = parent.parent()
-                
-            dialog = TextSearchStepDialog(step, excel_columns, parent=self)
-            if dialog.exec_() == QDialog.Accepted:
-                # Update step with new data
-                step_data = dialog.get_step_data()
-                step.name = step_data['name']
-                step.search_text = step_data['search_text']
-                step.excel_column = step_data['excel_column']
-                step.region = step_data['region']
-                step.exact_match = step_data['exact_match']
-                step.confidence = step_data['confidence']
-                step.click_after_find = step_data['click_after_find']
-                step.click_offset = step_data['click_offset']
-                self._rebuild_ui()
-                self.stepEdited.emit(step_id)
-                
-        elif step.step_type == StepType.IF_CONDITION:
-            from dialogs.if_condition_step_dialog import IfConditionStepDialog
-            # Get Excel columns from parent widget
-            excel_columns = []
-            parent = self.parent()
-            while parent:
-                if hasattr(parent, 'excel_widget'):
-                    excel_manager = parent.excel_widget.get_excel_manager()
-                    if excel_manager and excel_manager._current_data is not None:
-                        excel_columns = list(excel_manager._current_data.columns)
-                    break
-                parent = parent.parent()
-                
-            dialog = IfConditionStepDialog(step, excel_columns, parent=self)
-            if dialog.exec_() == QDialog.Accepted:
-                # Update step with new data
-                step_data = dialog.get_step_data()
-                step.name = step_data['name']
-                step.description = step_data['description']
-                step.condition_type = step_data['condition_type']
-                step.condition_value = step_data['condition_value']
-                step.true_steps = step_data['true_steps']
-                step.false_steps = step_data['false_steps']
-                self._rebuild_ui()
-                self.stepEdited.emit(step_id)
-        else:
-            # For other step types, emit the signal as before
-            self.stepEdited.emit(step_id)
+        except Exception as e:
+            print(f"DEBUG: Exception in _on_step_edit: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "오류", f"단계 편집 중 오류가 발생했습니다:\n{str(e)}")
         
     def _on_step_delete(self, step_id: str):
         """Handle step deletion"""
@@ -546,54 +702,66 @@ class MacroFlowWidget(QWidget):
             
     def dropEvent(self, event: QDropEvent):
         """Handle drop"""
-        # Calculate drop index
-        drop_index = self._get_drop_index(event.pos())
-        
-        if event.mimeData().hasFormat("application/x-steptype"):
-            # New step from palette
-            byte_array = event.mimeData().data("application/x-steptype")
-            stream = QDataStream(byte_array, QIODevice.ReadOnly)
-            step_type_str = stream.readQString()
+        try:
+            # Calculate drop index
+            drop_index = self._get_drop_index(event.pos())
             
-            step_type = StepType(step_type_str)
-            new_step = StepFactory.create_step(step_type)
-            
-            # Set default name
-            step_names = {
-                StepType.MOUSE_CLICK: "마우스 클릭",
-                StepType.MOUSE_MOVE: "마우스 이동",
-                StepType.KEYBOARD_TYPE: "텍스트 입력",
-                StepType.KEYBOARD_HOTKEY: "단축키",
-                StepType.WAIT_TIME: "대기",
-                StepType.WAIT_IMAGE: "이미지 대기",
-                StepType.IMAGE_SEARCH: "이미지 검색",
-                StepType.OCR_TEXT: "텍스트 검색",
-                StepType.SCREENSHOT: "화면 캡처",
-                StepType.IF_CONDITION: "조건문",
-                StepType.LOOP: "반복문"
-            }
-            new_step.name = step_names.get(step_type, step_type.value)
-            
-            self.macro.add_step(new_step, drop_index)
-            self._rebuild_ui()
-            self.stepAdded.emit(new_step, drop_index)
-            
-        elif event.mimeData().hasFormat("application/x-macrostep"):
-            # Moving existing step
-            byte_array = event.mimeData().data("application/x-macrostep")
-            stream = QDataStream(byte_array, QIODevice.ReadOnly)
-            step_id = stream.readQString()
-            old_index = stream.readInt()
-            
-            # Adjust drop index if moving down
-            if old_index < drop_index:
-                drop_index -= 1
+            if event.mimeData().hasFormat("application/x-steptype"):
+                # New step from palette
+                byte_array = event.mimeData().data("application/x-steptype")
+                stream = QDataStream(byte_array, QIODevice.ReadOnly)
+                step_type_str_result = stream.readQString()
+                step_type_str = step_type_str_result[0] if isinstance(step_type_str_result, tuple) else step_type_str_result
                 
-            self.macro.move_step(step_id, drop_index)
-            self._rebuild_ui()
-            self.stepMoved.emit(step_id, drop_index)
+                step_type = StepType(step_type_str)
+                new_step = StepFactory.create_step(step_type)
+                
+                # Set default name
+                step_names = {
+                    StepType.MOUSE_CLICK: "마우스 클릭",
+                    StepType.MOUSE_MOVE: "마우스 이동",
+                    StepType.KEYBOARD_TYPE: "텍스트 입력",
+                    StepType.KEYBOARD_HOTKEY: "단축키",
+                    StepType.WAIT_TIME: "대기",
+                    StepType.WAIT_IMAGE: "이미지 대기",
+                    StepType.IMAGE_SEARCH: "이미지 검색",
+                    StepType.OCR_TEXT: "텍스트 검색",
+                    StepType.SCREENSHOT: "화면 캡처",
+                    StepType.IF_CONDITION: "조건문",
+                    StepType.LOOP: "반복문"
+                }
+                new_step.name = step_names.get(step_type, step_type.value)
+                
+                self.macro.add_step(new_step, drop_index)
+                self._rebuild_ui()
+                self.stepAdded.emit(new_step, drop_index)
+                
+                # Automatically open configuration dialog for new step
+                self._on_step_edit(new_step)
+                
+            elif event.mimeData().hasFormat("application/x-macrostep"):
+                # Moving existing step
+                byte_array = event.mimeData().data("application/x-macrostep")
+                stream = QDataStream(byte_array, QIODevice.ReadOnly)
+                step_id_result = stream.readQString()
+                step_id = step_id_result[0] if isinstance(step_id_result, tuple) else step_id_result
+                old_index = stream.readInt()
+                
+                # Adjust drop index if moving down
+                if old_index < drop_index:
+                    drop_index -= 1
+                    
+                self.macro.move_step(step_id, drop_index)
+                self._rebuild_ui()
+                self.stepMoved.emit(step_id, drop_index)
+                
+            event.acceptProposedAction()
             
-        event.acceptProposedAction()
+        except Exception as e:
+            QMessageBox.critical(self, "\uc624\ub958", f"\ub4dc\ub798\uadf8 \uc568 \ub4dc\ub86d \uc911 \uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4:\n{str(e)}")
+            print(f"Drop event error: {e}")
+            import traceback
+            traceback.print_exc()
         
     def _get_drop_index(self, pos) -> int:
         """Calculate index where item should be dropped"""

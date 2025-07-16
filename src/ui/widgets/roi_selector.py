@@ -3,12 +3,12 @@ Region of Interest (ROI) selector widget with transparent overlay
 """
 
 from typing import Optional, Tuple, Callable
-from PyQt5.QtWidgets import QWidget, QApplication, QLabel, QVBoxLayout
+from PyQt5.QtWidgets import QWidget, QApplication, QLabel, QVBoxLayout, QDialog
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QTimer
-from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QPixmap, QFont, QCursor
+from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QPixmap, QFont, QCursor, QPalette
 import sys
 
-class ROISelectorOverlay(QWidget):
+class ROISelectorOverlay(QDialog):
     """Transparent overlay for ROI selection"""
     
     # Signals
@@ -25,22 +25,23 @@ class ROISelectorOverlay(QWidget):
         self.selection_rect = QRect()
         
         # UI setup
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | 
-            Qt.WindowStaysOnTopHint |
-            Qt.Tool
-        )
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        # Use flags that work well on Windows
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Dialog)
+        self.setModal(True)
+        
+        # Set dark background
+        palette = self.palette()
+        palette.setColor(QPalette.Background, QColor(0, 0, 0, 150))
+        self.setPalette(palette)
+        self.setAutoFillBackground(True)
+        
+        # Cursor and mouse tracking
         self.setCursor(Qt.CrossCursor)
+        self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.StrongFocus)
         
         # Cover all screens
         self._setup_multi_monitor()
-        
-        # Styling
-        self.overlay_color = QColor(0, 0, 0, 100)  # Semi-transparent black
-        self.selection_color = QColor(50, 150, 250, 100)  # Semi-transparent blue
-        self.border_color = QColor(50, 150, 250, 255)  # Solid blue
-        self.text_color = QColor(255, 255, 255, 255)  # White
         
     def _setup_multi_monitor(self):
         """Setup to cover all monitors"""
@@ -56,11 +57,41 @@ class ROISelectorOverlay(QWidget):
         
     def start_selection(self):
         """Start ROI selection"""
-        self.show()
+        print("DEBUG: ROI start_selection called")
+        
+        # Ensure window covers full screen
+        desktop = QApplication.desktop()
+        screen_rect = desktop.screenGeometry()
+        self.setGeometry(screen_rect)
+        
+        # Show window using exec_ for modal dialog
+        print(f"DEBUG: Showing ROI window at {screen_rect}")
+        
+        # Start with a slight delay to ensure proper display
+        QTimer.singleShot(100, self._prepare_selection)
+        
+        # Show as modal dialog
+        self.exec_()
+        
+    def _prepare_selection(self):
+        """Prepare for selection after dialog is shown"""
+        print("DEBUG: _prepare_selection called")
         self.raise_()
         self.activateWindow()
         self.grabMouse()
         self.grabKeyboard()
+        self.update()
+        
+    def _grab_input(self):
+        """Grab mouse and keyboard input after delay"""
+        print("DEBUG: _grab_input called")
+        try:
+            self.grabMouse()
+            self.grabKeyboard()
+            self.setFocus()
+            print("DEBUG: Input grabbed successfully")
+        except Exception as e:
+            print(f"DEBUG: Error grabbing input: {e}")
         
     def mousePressEvent(self, event):
         """Handle mouse press"""
@@ -90,7 +121,8 @@ class ROISelectorOverlay(QWidget):
             
             # Emit result if selection is valid
             if w > 5 and h > 5:
-                self.selectionComplete.emit((x, y, w, h))
+                region = (int(x), int(y), int(w), int(h))
+                self.selectionComplete.emit(region)
             
             self.close()
             
@@ -103,10 +135,23 @@ class ROISelectorOverlay(QWidget):
             
     def paintEvent(self, event):
         """Paint overlay and selection"""
+        print("DEBUG: paintEvent called")
         painter = QPainter(self)
         
-        # Draw semi-transparent overlay
-        painter.fillRect(self.rect(), self.overlay_color)
+        # Fill with solid color to ensure visibility
+        painter.fillRect(self.rect(), QColor(50, 50, 50, 200))
+        
+        # Draw visible text
+        painter.setPen(QColor(255, 255, 255))
+        font = QFont()
+        font.setPointSize(24)
+        font.setBold(True)
+        painter.setFont(font)
+        
+        instructions = "마우스를 드래그하여 영역을 선택하세요. ESC로 취소"
+        rect = self.rect()
+        rect.setTop(50)
+        painter.drawText(rect, Qt.AlignTop | Qt.AlignHCenter, instructions)
         
         if self.selecting or (self.start_point and self.end_point):
             # Calculate selection rectangle
@@ -118,19 +163,17 @@ class ROISelectorOverlay(QWidget):
             # Adjust to widget coordinates
             selection = QRect(x - self.x(), y - self.y(), w, h)
             
-            # Clear selection area (make it transparent)
-            painter.setCompositionMode(QPainter.CompositionMode_Clear)
-            painter.fillRect(selection, Qt.transparent)
+            # Draw selection area with lighter background
+            painter.fillRect(selection, QColor(255, 255, 255, 50))
             
             # Draw selection border
-            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
-            painter.setPen(QPen(self.border_color, 2, Qt.SolidLine))
+            painter.setPen(QPen(QColor(50, 150, 250), 3, Qt.SolidLine))
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(selection)
             
             # Draw dimensions text
             if w > 50 and h > 30:
-                painter.setPen(self.text_color)
+                painter.setPen(QColor(255, 255, 255))
                 font = QFont()
                 font.setPointSize(12)
                 font.setBold(True)
@@ -146,7 +189,7 @@ class ROISelectorOverlay(QWidget):
     def _draw_handles(self, painter: QPainter, rect: QRect):
         """Draw resize handles at corners"""
         handle_size = 8
-        painter.setBrush(QBrush(self.border_color))
+        painter.setBrush(QBrush(QColor(50, 150, 250)))
         painter.setPen(Qt.NoPen)
         
         # Top-left
@@ -171,9 +214,10 @@ class ROISelectorOverlay(QWidget):
                         
     def close(self):
         """Clean up and close"""
+        print("DEBUG: ROI close() called")
         self.releaseMouse()
         self.releaseKeyboard()
-        super().close()
+        self.accept()  # Close the dialog properly
 
 class ROISelectorWidget(QWidget):
     """Widget for ROI selection with preview"""
@@ -204,7 +248,7 @@ class ROISelectorWidget(QWidget):
         layout.addWidget(self.preview_label)
         
         # Info label
-        self.info_label = QLabel("No region selected")
+        self.info_label = QLabel("선택된 영역 없음")
         self.info_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.info_label)
         
@@ -220,7 +264,7 @@ class ROISelectorWidget(QWidget):
     def _on_selection_complete(self, region: Tuple[int, int, int, int]):
         """Handle selection completion"""
         self.current_region = region
-        self.info_label.setText(f"Region: {region[0]}, {region[1]} - {region[2]}×{region[3]}")
+        self.info_label.setText(f"영역: {region[0]}, {region[1]} - {region[2]}×{region[3]}")
         self.regionSelected.emit(region)
         
         # Capture and show preview
@@ -228,7 +272,7 @@ class ROISelectorWidget(QWidget):
         
     def _on_selection_cancelled(self):
         """Handle selection cancellation"""
-        self.info_label.setText("Selection cancelled")
+        self.info_label.setText("선택 취소됨")
         
     def _update_preview(self):
         """Update preview of selected region"""
@@ -280,11 +324,15 @@ class ROISelectorWidget(QWidget):
             
         return qimage
         
-    def set_region(self, region: Tuple[int, int, int, int]):
+    def set_region(self, region: Optional[Tuple[int, int, int, int]]):
         """Set region programmatically"""
         self.current_region = region
-        self.info_label.setText(f"Region: {region[0]}, {region[1]} - {region[2]}×{region[3]}")
-        self._update_preview()
+        if region:
+            self.info_label.setText(f"영역: {region[0]}, {region[1]} - {region[2]}×{region[3]}")
+            self._update_preview()
+        else:
+            self.info_label.setText("선택된 영역 없음")
+            self.preview_label.clear()
         
     def get_region(self) -> Optional[Tuple[int, int, int, int]]:
         """Get current region"""

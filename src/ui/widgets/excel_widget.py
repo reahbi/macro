@@ -8,9 +8,9 @@ from PyQt5.QtWidgets import (
     QProgressDialog
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
-from .file_selector import FileSelectorWidget
-from .sheet_mapper import SheetMapperWidget
-from .data_preview import DataPreviewWidget
+from ui.widgets.file_selector import FileSelectorWidget
+from ui.widgets.sheet_mapper import SheetMapperWidget
+from ui.widgets.data_preview import DataPreviewWidget
 from excel.excel_manager import ExcelManager
 from excel.models import ExcelFileInfo, ColumnMapping
 from logger.app_logger import get_logger

@@ -12,8 +12,8 @@ from core.macro_types import Macro, MacroStep
 from excel.excel_manager import ExcelManager
 from logger.app_logger import get_logger
 from config.settings import Settings
-from .executor import StepExecutor
-from .hotkey_listener import HotkeyListener
+from automation.executor import StepExecutor
+from automation.hotkey_listener import HotkeyListener
 from logger.execution_logger import get_execution_logger
 
 class ExecutionState(Enum):

@@ -2,7 +2,7 @@
 Core business logic module
 """
 
-from .macro_types import (
+from core.macro_types import (
     MacroStep, StepType, MouseButton, ConditionOperator,
     MouseClickStep, MouseMoveStep,
     KeyboardTypeStep, KeyboardHotkeyStep, 
@@ -11,7 +11,7 @@ from .macro_types import (
     Macro, StepFactory
 )
 
-from .macro_storage import MacroStorage
+from core.macro_storage import MacroStorage
 
 __all__ = [
     # Types and Enums

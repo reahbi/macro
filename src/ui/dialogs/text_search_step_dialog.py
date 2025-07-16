@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QPushButton, QLabel, QCheckBox, QSpinBox,
     QDoubleSpinBox, QComboBox, QGroupBox, QMessageBox,
-    QDialogButtonBox
+    QDialogButtonBox, QWidget, QApplication
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor
@@ -226,23 +226,60 @@ class TextSearchStepDialog(QDialog):
         
     def _select_region(self):
         """Select screen region"""
+        # Hide dialog temporarily
         self.hide()
-        QTimer.singleShot(300, self._show_region_selector)
+        # Give time for dialog to hide before showing ROI selector
+        QTimer.singleShot(200, self._show_region_selector)
         
     def _show_region_selector(self):
         """Show region selector overlay"""
-        selector = ROISelectorOverlay()
-        selector.selectionComplete.connect(self._on_region_selected)
-        selector.show()
+        try:
+            print("DEBUG: Creating ROI selector")
+            # Create ROI selector as a top-level window
+            self.roi_selector = ROISelectorOverlay(parent=None)
+            self.roi_selector.selectionComplete.connect(self._on_region_selected)
+            self.roi_selector.selectionCancelled.connect(lambda: self.show())
+            print("DEBUG: Starting ROI selection")
+            self.roi_selector.start_selection()
+        except Exception as e:
+            print(f"DEBUG: Error in _show_region_selector: {e}")
+            import traceback
+            traceback.print_exc()
+            self.show()
+            
+    def _on_selection_cancelled(self):
+        """Handle selection cancellation"""
+        print("DEBUG: Selection cancelled")
+        self.show()
         
     def _on_region_selected(self, region: Tuple[int, int, int, int]):
         """Handle region selection"""
-        self.region = region
-        self.region_label.setText(
-            f"영역: ({region[0]}, {region[1]}) "
-            f"크기: {region[2]}x{region[3]}"
-        )
-        self.show()
+        try:
+            # Ensure region is properly formatted
+            if region and len(region) == 4:
+                # Convert all values to integers to avoid any type issues
+                formatted_region = tuple(int(x) for x in region)
+                self.region = formatted_region
+                self.region_label.setText(
+                    f"영역: ({formatted_region[0]}, {formatted_region[1]}) "
+                    f"크기: {formatted_region[2]}x{formatted_region[3]}"
+                )
+            else:
+                self.region = None
+                self.region_label.setText("전체 화면")
+            
+            # Restore dialog visibility
+            self.show()
+            self.raise_()
+            self.activateWindow()
+        except Exception as e:
+            print(f"DEBUG: Error in _on_region_selected: {e}")
+            import traceback
+            traceback.print_exc()
+            # Still try to show the dialog
+            self.region = None
+            self.region_label.setText("전체 화면")
+            self.show()
         
     def _clear_region(self):
         """Clear selected region"""
@@ -255,26 +292,49 @@ class TextSearchStepDialog(QDialog):
             QMessageBox.information(self, "알림", "선택된 영역이 없습니다.")
             return
             
-        # Take screenshot of region
-        x, y, width, height = self.region
-        screenshot = pyautogui.screenshot(region=(x, y, width, height))
-        
-        # Convert to QPixmap and show in dialog
-        from PIL import ImageQt
-        qimg = ImageQt.ImageQt(screenshot)
-        pixmap = QPixmap.fromImage(qimg)
-        
-        # Create preview dialog
-        preview_dialog = QDialog(self)
-        preview_dialog.setWindowTitle("영역 미리보기")
-        layout = QVBoxLayout()
-        
-        label = QLabel()
-        label.setPixmap(pixmap)
-        layout.addWidget(label)
-        
-        preview_dialog.setLayout(layout)
-        preview_dialog.exec_()
+        try:
+            # Take screenshot of region
+            x, y, width, height = self.region
+            screenshot = pyautogui.screenshot(region=(x, y, width, height))
+            
+            # Convert to QPixmap
+            # Save to bytes first to avoid direct conversion issues
+            import io
+            bytes_io = io.BytesIO()
+            screenshot.save(bytes_io, format='PNG')
+            bytes_io.seek(0)
+            
+            pixmap = QPixmap()
+            pixmap.loadFromData(bytes_io.read())
+            
+            if pixmap.isNull():
+                QMessageBox.warning(self, "경고", "영역 미리보기를 생성할 수 없습니다.")
+                return
+            
+            # Create preview dialog
+            preview_dialog = QDialog(self)
+            preview_dialog.setWindowTitle("영역 미리보기")
+            layout = QVBoxLayout()
+            
+            label = QLabel()
+            # Scale pixmap if too large
+            if pixmap.width() > 800 or pixmap.height() > 600:
+                pixmap = pixmap.scaled(800, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            label.setPixmap(pixmap)
+            layout.addWidget(label)
+            
+            # Add region info
+            info_label = QLabel(f"영역: ({x}, {y}) - 크기: {width}x{height}")
+            layout.addWidget(info_label)
+            
+            preview_dialog.setLayout(layout)
+            preview_dialog.exec_()
+            
+        except Exception as e:
+            print(f"DEBUG: Error in preview: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.warning(self, "오류", f"미리보기 생성 중 오류가 발생했습니다:\n{str(e)}")
         
     def _test_search(self):
         """Test text search"""
@@ -298,6 +358,9 @@ class TextSearchStepDialog(QDialog):
     def _perform_test_search(self, search_text: str):
         """Perform the actual test search"""
         try:
+            print(f"DEBUG: Starting test search for: {search_text}")
+            print(f"DEBUG: Current region: {self.region}")
+            
             # For testing with Excel column, use sample text
             if self.excel_column_radio.isChecked():
                 test_text = QMessageBox.getText(
@@ -311,12 +374,15 @@ class TextSearchStepDialog(QDialog):
                     self.show()
                     return
             
+            print("DEBUG: Extracting text from region...")
             # Extract text from region
             results = self.text_extractor.extract_text_from_region(
                 self.region, 
                 self.confidence_spin.value()
             )
+            print(f"DEBUG: Found {len(results)} text results")
             
+            print("DEBUG: Finding matching text...")
             # Find matching text
             found_result = self.text_extractor.find_text(
                 search_text,
@@ -326,6 +392,7 @@ class TextSearchStepDialog(QDialog):
             )
             
             if found_result:
+                print(f"DEBUG: Found text at {found_result.center}")
                 # Show result
                 if self.click_after_find_check.isChecked():
                     # Calculate click position
@@ -349,9 +416,14 @@ class TextSearchStepDialog(QDialog):
                 self._highlight_found_text(found_result)
                 
             else:
+                print("DEBUG: Text not found")
                 # Show all found text for debugging
-                all_text = "\n".join([f"- {r.text} (신뢰도: {r.confidence:.2f})" 
-                                     for r in results[:10]])  # Show max 10
+                if results:
+                    all_text = "\n".join([f"- {r.text} (신뢰도: {r.confidence:.2f})" 
+                                         for r in results[:10]])  # Show max 10
+                else:
+                    all_text = "텍스트를 찾을 수 없습니다."
+                    
                 message = (
                     f"텍스트 '{search_text}'을(를) 찾을 수 없습니다.\n\n"
                     f"발견된 텍스트:\n{all_text}"
@@ -360,6 +432,9 @@ class TextSearchStepDialog(QDialog):
             QMessageBox.information(self, "테스트 결과", message)
             
         except Exception as e:
+            print(f"DEBUG: Error in test search: {e}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self, "오류", f"테스트 중 오류 발생: {str(e)}")
         finally:
             self.show()
@@ -371,6 +446,76 @@ class TextSearchStepDialog(QDialog):
         import time
         x, y = result.center
         pyautogui.moveTo(x, y, duration=0.5)
+        
+    def _perform_test_search_immediate(self, search_text: str):
+        """Perform test search without hiding dialog (for Windows compatibility)"""
+        loading_msg = None
+        try:
+            print(f"DEBUG: Starting immediate test search for: {search_text}")
+            print(f"DEBUG: Current region: {self.region}")
+            
+            # Extract text from region first (before showing loading)
+            results = self.text_extractor.extract_text_from_region(
+                self.region, 
+                self.confidence_spin.value()
+            )
+            print(f"DEBUG: Found {len(results)} text results")
+            
+            # Find matching text
+            found_result = self.text_extractor.find_text(
+                search_text,
+                self.region,
+                self.exact_match_check.isChecked(),
+                self.confidence_spin.value()
+            )
+            
+            if found_result:
+                print(f"DEBUG: Found text at {found_result.center}")
+                # Show result
+                if self.click_after_find_check.isChecked():
+                    # Calculate click position
+                    click_x = found_result.center[0] + self.offset_x_spin.value()
+                    click_y = found_result.center[1] + self.offset_y_spin.value()
+                    
+                    message = (
+                        f"텍스트 '{search_text}'을(를) 찾았습니다!\n\n"
+                        f"위치: ({found_result.center[0]}, {found_result.center[1]})\n"
+                        f"클릭 위치: ({click_x}, {click_y})\n"
+                        f"신뢰도: {found_result.confidence:.2f}"
+                    )
+                else:
+                    message = (
+                        f"텍스트 '{search_text}'을(를) 찾았습니다!\n\n"
+                        f"위치: ({found_result.center[0]}, {found_result.center[1]})\n"
+                        f"신뢰도: {found_result.confidence:.2f}"
+                    )
+                
+                QMessageBox.information(self, "테스트 성공", message)
+                
+                # Highlight found text
+                self._highlight_found_text(found_result)
+                
+            else:
+                print("DEBUG: Text not found")
+                # Show all found text for debugging
+                if results:
+                    all_text = "\n".join([f"• {r.text} (신뢰도: {r.confidence:.2f})" 
+                                         for r in results[:10]])  # Show max 10
+                else:
+                    all_text = "인식된 텍스트가 없습니다."
+                    
+                message = (
+                    f"텍스트 '{search_text}'을(를) 찾을 수 없습니다.\n\n"
+                    f"검색 영역에서 발견된 텍스트:\n{all_text}"
+                )
+                
+                QMessageBox.warning(self, "테스트 결과", message)
+                
+        except Exception as e:
+            print(f"DEBUG: Error in immediate test search: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "오류", f"테스트 중 오류 발생:\n{str(e)}")
         
     def get_step_data(self) -> Dict[str, Any]:
         """Get step configuration data"""

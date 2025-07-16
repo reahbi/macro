@@ -6,11 +6,13 @@ import os
 import numpy as np
 from typing import Optional, List, Tuple, Dict, Any
 from dataclasses import dataclass
-import easyocr
 import cv2
 from PIL import Image
 import mss
 from logger.app_logger import get_logger
+
+# EasyOCR is required
+import easyocr
 
 @dataclass
 class TextResult:

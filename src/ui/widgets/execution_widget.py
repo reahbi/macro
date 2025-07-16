@@ -322,7 +322,8 @@ class ExecutionWidget(QWidget):
         # Reset statistics
         self.completed_count = 0
         self.failed_count = 0
-        self.start_time = QTimer.currentTime()
+        from PyQt5.QtCore import QTime
+        self.start_time = QTime.currentTime()
         self.log_widget.setRowCount(0)
         
         # Configure engine
@@ -397,7 +398,7 @@ class ExecutionWidget(QWidget):
         self.logger.error(f"Execution error: {error_msg}")
         
         # Show error dialog
-        from dialogs.error_report_dialog import ErrorReportDialog
+        from ui.dialogs.error_report_dialog import ErrorReportDialog
         from logger.execution_logger import get_execution_logger
         
         log_file = get_execution_logger().get_current_log_file()
@@ -419,7 +420,7 @@ class ExecutionWidget(QWidget):
             
     def show_log_viewer(self):
         """Show log viewer dialog"""
-        from dialogs.log_viewer_dialog import LogViewerDialog
+        from ui.dialogs.log_viewer_dialog import LogViewerDialog
         from logger.execution_logger import get_execution_logger
         
         # Open with current log file if available

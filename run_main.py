@@ -17,8 +17,12 @@ sys.path.insert(0, str(src_path))
 sys.path.insert(0, str(project_root))
 
 # 환경 변수 설정
-os.environ['QT_QPA_PLATFORM'] = 'xcb'
+if sys.platform == 'win32':
+    os.environ['QT_QPA_PLATFORM'] = 'windows'
+else:
+    os.environ['QT_QPA_PLATFORM'] = 'xcb'
 os.environ['PYTHONPATH'] = f"{project_root}:{src_path}"
+os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 # 상대 import를 절대 import로 변경하기 위한 monkey patching
 def patch_imports():
@@ -26,58 +30,58 @@ def patch_imports():
     
     # settings.py의 상대 import 수정
     settings_file = src_path / "config" / "settings.py"
-    content = settings_file.read_text()
+    content = settings_file.read_text(encoding='utf-8')
     content = content.replace("from ..utils.encryption", "from utils.encryption")
     content = content.replace("from ..logger.app_logger", "from logger.app_logger")
-    settings_file.write_text(content)
+    settings_file.write_text(content, encoding='utf-8')
     
     # main_window.py의 상대 import 수정  
     main_window_file = src_path / "ui" / "main_window.py"
     if main_window_file.exists():
-        content = main_window_file.read_text()
+        content = main_window_file.read_text(encoding='utf-8')
         content = content.replace("from ..config.settings", "from config.settings")
         content = content.replace("from ..logger.app_logger", "from logger.app_logger")
         content = content.replace("from .widgets.excel_widget", "from ui.widgets.excel_widget")
         content = content.replace("from .widgets.macro_editor", "from ui.widgets.macro_editor")
         content = content.replace("from .widgets.execution_widget", "from ui.widgets.execution_widget")
-        main_window_file.write_text(content)
+        main_window_file.write_text(content, encoding='utf-8')
     
     # excel_widget.py의 상대 import 수정
     excel_widget_file = src_path / "ui" / "widgets" / "excel_widget.py"
     if excel_widget_file.exists():
-        content = excel_widget_file.read_text()
+        content = excel_widget_file.read_text(encoding='utf-8')
         content = content.replace("from ...excel.excel_manager", "from excel.excel_manager")
         content = content.replace("from ...config.settings", "from config.settings")
         content = content.replace("from ...logger.app_logger", "from logger.app_logger")
-        excel_widget_file.write_text(content)
+        excel_widget_file.write_text(content, encoding='utf-8')
     
     # macro_editor.py의 상대 import 수정
     macro_editor_file = src_path / "ui" / "widgets" / "macro_editor.py"
     if macro_editor_file.exists():
-        content = macro_editor_file.read_text()
+        content = macro_editor_file.read_text(encoding='utf-8')
         content = content.replace("from ...core", "from core")
         content = content.replace("from ..dialogs", "from ui.dialogs")
-        macro_editor_file.write_text(content)
+        macro_editor_file.write_text(content, encoding='utf-8')
     
     # execution_widget.py의 상대 import 수정
     execution_widget_file = src_path / "ui" / "widgets" / "execution_widget.py"
     if execution_widget_file.exists():
-        content = execution_widget_file.read_text()
+        content = execution_widget_file.read_text(encoding='utf-8')
         content = content.replace("from ...automation", "from automation")
         content = content.replace("from ...core", "from core")
         content = content.replace("from ...config", "from config")
         content = content.replace("from ...logger", "from logger")
-        execution_widget_file.write_text(content)
+        execution_widget_file.write_text(content, encoding='utf-8')
     
     # 다른 파일들도 수정
     for py_file in src_path.rglob("*.py"):
         try:
-            content = py_file.read_text()
+            content = py_file.read_text(encoding='utf-8')
             if "from .." in content:
                 # 상대 import를 절대 import로 변경
                 content = content.replace("from ...", "from ")
                 content = content.replace("from ..", "from ")
-                py_file.write_text(content)
+                py_file.write_text(content, encoding='utf-8')
         except:
             pass
 
