@@ -283,7 +283,7 @@ class StepExecutor:
             raise ValueError("No search text specified")
             
         # Replace variables in search text
-        search_text = self._replace_variables(search_text)
+        search_text = self._substitute_variables(search_text)
         
         self.logger.info(f"Searching for text: {search_text}")
         
@@ -314,10 +314,108 @@ class StepExecutor:
     # Flow control handlers
     
     def _execute_if_condition(self, step) -> bool:
-        """Execute if condition"""
-        # TODO: Implement condition evaluation
-        # For now, always return True
-        return True
+        """Execute if condition and run appropriate branch"""
+        condition_result = False
+        
+        try:
+            # Evaluate condition based on type
+            if step.condition_type == "image_exists":
+                # Check if image exists on screen
+                image_path = step.condition_value.get('image_path', '')
+                confidence = step.condition_value.get('confidence', 0.9)
+                region = step.condition_value.get('region')
+                
+                if self._image_matcher:
+                    result = self._image_matcher.find_image(
+                        image_path,
+                        confidence=confidence,
+                        region=region
+                    )
+                    condition_result = result.found if result else False
+                else:
+                    # Fallback to pyautogui
+                    try:
+                        location = pyautogui.locateOnScreen(
+                            image_path,
+                            confidence=confidence,
+                            region=region
+                        )
+                        condition_result = location is not None
+                    except:
+                        condition_result = False
+                        
+            elif step.condition_type == "text_exists":
+                # Check if text exists on screen
+                search_text = step.condition_value.get('text', '')
+                exact_match = step.condition_value.get('exact_match', False)
+                region = step.condition_value.get('region')
+                
+                # Substitute variables in search text
+                search_text = self._substitute_variables(search_text)
+                
+                if self._text_extractor and search_text:
+                    result = self._text_extractor.find_text(
+                        search_text,
+                        region=region,
+                        exact_match=exact_match,
+                        confidence_threshold=0.5
+                    )
+                    condition_result = result is not None
+                else:
+                    condition_result = False
+                    
+            elif step.condition_type in ["variable_equals", "variable_contains", "variable_greater", "variable_less"]:
+                # Variable comparison conditions
+                variable_name = step.condition_value.get('variable', '')
+                compare_value = step.condition_value.get('compare_value', '')
+                
+                # Get variable value
+                variable_value = self.variables.get(variable_name, '')
+                
+                # Substitute variables in compare value
+                compare_value = self._substitute_variables(compare_value)
+                
+                # Perform comparison
+                if step.condition_type == "variable_equals":
+                    condition_result = str(variable_value) == str(compare_value)
+                elif step.condition_type == "variable_contains":
+                    condition_result = str(compare_value) in str(variable_value)
+                elif step.condition_type == "variable_greater":
+                    try:
+                        condition_result = float(variable_value) > float(compare_value)
+                    except (ValueError, TypeError):
+                        # If not numeric, do string comparison
+                        condition_result = str(variable_value) > str(compare_value)
+                elif step.condition_type == "variable_less":
+                    try:
+                        condition_result = float(variable_value) < float(compare_value)
+                    except (ValueError, TypeError):
+                        # If not numeric, do string comparison
+                        condition_result = str(variable_value) < str(compare_value)
+                        
+            self.logger.info(f"Condition '{step.condition_type}' evaluated to: {condition_result}")
+            
+            # Execute appropriate branch
+            if condition_result:
+                # Execute true branch steps
+                for nested_step in step.true_steps:
+                    if nested_step.enabled:
+                        self.execute_step(nested_step)
+            else:
+                # Execute false branch steps
+                for nested_step in step.false_steps:
+                    if nested_step.enabled:
+                        self.execute_step(nested_step)
+                        
+            return condition_result
+            
+        except Exception as e:
+            self.logger.error(f"Error evaluating condition: {e}")
+            # On error, execute false branch
+            for nested_step in step.false_steps:
+                if nested_step.enabled:
+                    self.execute_step(nested_step)
+            return False
         
     def _execute_loop(self, step) -> None:
         """Execute loop"""

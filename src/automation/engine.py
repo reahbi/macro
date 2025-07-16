@@ -14,6 +14,7 @@ from logger.app_logger import get_logger
 from config.settings import Settings
 from .executor import StepExecutor
 from .hotkey_listener import HotkeyListener
+from logger.execution_logger import get_execution_logger
 
 class ExecutionState(Enum):
     """Execution states"""
@@ -59,6 +60,7 @@ class ExecutionEngine(QThread):
         # Execution components
         self.step_executor = StepExecutor(settings)
         self.hotkey_listener = HotkeyListener(settings)
+        self.execution_logger = get_execution_logger()
         
         # Current execution context
         self.macro: Optional[Macro] = None
@@ -125,6 +127,11 @@ class ExecutionEngine(QThread):
             self._set_state(ExecutionState.RUNNING)
             self.hotkey_listener.start()
             
+            # Start CSV logging session
+            excel_file = self.excel_manager.file_path if self.excel_manager else "Unknown"
+            log_file = self.execution_logger.start_session(self.macro.name, excel_file)
+            self.logger.info(f"Execution log started: {log_file}")
+            
             # Get rows to process
             if not self.target_rows:
                 # Process all incomplete rows
@@ -132,6 +139,10 @@ class ExecutionEngine(QThread):
                 
             total_rows = len(self.target_rows)
             self.logger.info(f"Starting execution for {total_rows} rows")
+            
+            # Track statistics
+            successful_rows = 0
+            failed_rows = 0
             
             # Execute each row
             for i, row_index in enumerate(self.target_rows):
@@ -149,6 +160,12 @@ class ExecutionEngine(QThread):
                 # Execute macro for this row
                 result = self._execute_row(row_index)
                 
+                # Update statistics
+                if result.success:
+                    successful_rows += 1
+                else:
+                    failed_rows += 1
+                
                 # Update Excel status
                 status = "완료" if result.success else f"실패: {result.error}"
                 self.excel_manager.update_row_status(row_index, status)
@@ -162,17 +179,26 @@ class ExecutionEngine(QThread):
             # Save Excel file after all rows
             self.excel_manager.save_file()
             
+            # Log session summary
+            self.execution_logger.log_session_end(
+                total_rows=len(self.target_rows),
+                successful_rows=successful_rows,
+                failed_rows=failed_rows
+            )
+            
             self._set_state(ExecutionState.IDLE)
             self.executionFinished.emit()
             
         except Exception as e:
             self.logger.error(f"Execution error: {e}", exc_info=True)
+            self.execution_logger.log_error("EXECUTION_ERROR", str(e), details=str(e))
             self.error.emit(str(e))
             self._set_state(ExecutionState.ERROR)
             
         finally:
             self.hotkey_listener.stop()
             self.current_row_index = None
+            self.execution_logger.close()
             
     def _execute_row(self, row_index: int) -> ExecutionResult:
         """Execute macro for a single row"""
@@ -182,11 +208,14 @@ class ExecutionEngine(QThread):
             # Get row data with mappings
             row_data = self.excel_manager.get_mapped_data(row_index)
             
+            # Log row start
+            self.execution_logger.log_row_start(row_index, row_data)
+            
             # Set variables in executor context
             self.step_executor.set_variables(row_data)
             
             # Execute each step
-            for step in self.macro.steps:
+            for step_index, step in enumerate(self.macro.steps):
                 # Check if stopping
                 if self.state == ExecutionState.STOPPING:
                     return ExecutionResult(row_index, False, "Execution stopped")
@@ -202,14 +231,30 @@ class ExecutionEngine(QThread):
                 self.stepExecuting.emit(step, row_index)
                 
                 # Execute step
+                step_start_time = time.time()
+                step_success = False
+                step_error = ""
+                
                 try:
                     self.step_executor.execute_step(step)
+                    step_success = True
                 except Exception as e:
                     error_msg = f"Step '{step.name}' failed: {str(e)}"
                     self.logger.error(error_msg)
+                    step_error = str(e)
+                    
+                    # Emit detailed error for UI
+                    if step.error_handling.value == "stop":
+                        self.error.emit(error_msg)
                     
                     # Handle error based on step configuration
                     if step.error_handling.value == "stop":
+                        # Log failed step
+                        step_duration = (time.time() - step_start_time) * 1000
+                        self.execution_logger.log_step_execution(
+                            row_index, step_index, step.name, step.step_type.value,
+                            False, step_duration, step_error
+                        )
                         return ExecutionResult(row_index, False, error_msg)
                     elif step.error_handling.value == "retry":
                         # Retry logic
@@ -217,17 +262,34 @@ class ExecutionEngine(QThread):
                             try:
                                 time.sleep(1)  # Wait before retry
                                 self.step_executor.execute_step(step)
+                                step_success = True
+                                step_error = ""
                                 break
                             except:
                                 if retry == step.retry_count - 1:
+                                    # Log failed step after all retries
+                                    step_duration = (time.time() - step_start_time) * 1000
+                                    self.execution_logger.log_step_execution(
+                                        row_index, step_index, step.name, step.step_type.value,
+                                        False, step_duration, step_error
+                                    )
                                     return ExecutionResult(row_index, False, error_msg)
                     # For "continue", just log and proceed
+                
+                # Log step execution result
+                step_duration = (time.time() - step_start_time) * 1000
+                self.execution_logger.log_step_execution(
+                    row_index, step_index, step.name, step.step_type.value,
+                    step_success, step_duration, step_error
+                )
                     
             duration_ms = (time.time() - start_time) * 1000
+            self.execution_logger.log_row_complete(row_index, True, duration_ms)
             return ExecutionResult(row_index, True, None, duration_ms)
             
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
+            self.execution_logger.log_row_complete(row_index, False, duration_ms, str(e))
             return ExecutionResult(row_index, False, str(e), duration_ms)
             
     def toggle_pause(self):

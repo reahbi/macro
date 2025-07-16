@@ -2,5 +2,13 @@
   {
     "type": "mouse_click",
     "name": "마우스 클릭"
+  },
+  {
+    "type": "keyboard_type",
+    "name": "텍스트 입력"
+  },
+  {
+    "type": "wait_time",
+    "name": "대기"
   }
 ]

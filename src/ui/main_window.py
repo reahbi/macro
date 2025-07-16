@@ -5,12 +5,16 @@ Main application window
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QMenuBar, QMenu, QAction, QStatusBar, QLabel,
-    QMessageBox, QTabWidget
+    QMessageBox, QTabWidget, QFileDialog
 )
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon
 from config.settings import Settings
 from logger.app_logger import get_logger
+from core.macro_storage import MacroStorage, MacroFormat
+from core.macro_types import Macro
+import os
+from typing import List, Optional
 
 class MainWindow(QMainWindow):
     """Main application window"""
@@ -19,6 +23,11 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = settings
         self.logger = get_logger(__name__)
+        
+        # Macro storage
+        self.macro_storage = MacroStorage()
+        self.current_macro_path: Optional[str] = None
+        self.recent_macros: List[str] = self.settings.get("macro.recent_files", [])
         
         self.init_ui()
         self.load_window_state()
@@ -83,8 +92,33 @@ class MainWindow(QMainWindow):
         file_menu.addAction(open_action)
         
         save_action = QAction("Save Project", self)
-        save_action.setShortcut("Ctrl+S")
+        save_action.setShortcut("Ctrl+Alt+S")
         file_menu.addAction(save_action)
+        
+        file_menu.addSeparator()
+        
+        # Macro menu items
+        save_macro_action = QAction("Save Macro", self)
+        save_macro_action.setShortcut("Ctrl+S")
+        save_macro_action.triggered.connect(self.save_macro)
+        file_menu.addAction(save_macro_action)
+        
+        load_macro_action = QAction("Load Macro", self)
+        load_macro_action.setShortcut("Ctrl+O")
+        load_macro_action.triggered.connect(self.load_macro)
+        file_menu.addAction(load_macro_action)
+        
+        export_macro_action = QAction("Export Macro", self)
+        export_macro_action.setShortcut("Ctrl+E")
+        export_macro_action.triggered.connect(self.export_macro)
+        file_menu.addAction(export_macro_action)
+        
+        file_menu.addSeparator()
+        
+        # Recent macros submenu
+        self.recent_macros_menu = QMenu("Recent Macros", self)
+        file_menu.addMenu(self.recent_macros_menu)
+        self.update_recent_macros_menu()
         
         file_menu.addSeparator()
         
@@ -105,6 +139,13 @@ class MainWindow(QMainWindow):
         
         theme_action = QAction("Toggle Theme", self)
         view_menu.addAction(theme_action)
+        
+        view_menu.addSeparator()
+        
+        log_viewer_action = QAction("Execution Logs", self)
+        log_viewer_action.setShortcut("Ctrl+L")
+        log_viewer_action.triggered.connect(self.show_log_viewer)
+        view_menu.addAction(log_viewer_action)
         
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -131,6 +172,12 @@ class MainWindow(QMainWindow):
             "Version: 1.0.0\n"
             "Automate repetitive tasks using Excel data"
         )
+        
+    def show_log_viewer(self):
+        """Show log viewer dialog"""
+        from ui.dialogs.log_viewer_dialog import LogViewerDialog
+        dialog = LogViewerDialog(parent=self)
+        dialog.show()  # Non-modal
         
     def closeEvent(self, event):
         """Handle window close event"""
@@ -173,3 +220,195 @@ class MainWindow(QMainWindow):
         excel_manager = self.excel_widget.get_excel_manager()
         if excel_manager._current_data:
             self.execution_widget.set_macro_and_excel(macro, excel_manager)
+            
+    def save_macro(self):
+        """Save current macro to file"""
+        try:
+            macro = self.macro_editor.get_macro()
+            if not macro or not macro.steps:
+                QMessageBox.warning(self, "Warning", "No macro to save.")
+                return
+                
+            # Get save path
+            if self.current_macro_path:
+                # Use current path
+                file_path = self.current_macro_path
+            else:
+                # Show save dialog
+                file_path, selected_filter = QFileDialog.getSaveFileName(
+                    self,
+                    "Save Macro",
+                    os.path.expanduser("~/"),
+                    "JSON files (*.json);;Encrypted files (*.emf);;All files (*.*)"
+                )
+                
+                if not file_path:
+                    return
+                    
+            # Determine format based on extension
+            if file_path.endswith('.emf'):
+                format_type = MacroFormat.ENCRYPTED
+            else:
+                format_type = MacroFormat.JSON
+                if not file_path.endswith('.json'):
+                    file_path += '.json'
+                    
+            # Save macro
+            success = self.macro_storage.save_macro(macro, file_path, format_type)
+            
+            if success:
+                self.current_macro_path = file_path
+                self.add_to_recent_macros(file_path)
+                self.update_window_title()
+                self.status_label.setText(f"Macro saved to {os.path.basename(file_path)}")
+                QMessageBox.information(self, "Success", "Macro saved successfully.")
+            else:
+                QMessageBox.critical(self, "Error", "Failed to save macro.")
+                
+        except Exception as e:
+            self.logger.error(f"Error saving macro: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to save macro: {str(e)}")
+            
+    def load_macro(self):
+        """Load macro from file"""
+        try:
+            # Show open dialog
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Load Macro",
+                os.path.expanduser("~/"),
+                "Macro files (*.json *.emf);;JSON files (*.json);;Encrypted files (*.emf);;All files (*.*)"
+            )
+            
+            if not file_path:
+                return
+                
+            # Load macro
+            macro = self.macro_storage.load_macro(file_path)
+            
+            if macro:
+                self.macro_editor.set_macro(macro)
+                self.current_macro_path = file_path
+                self.add_to_recent_macros(file_path)
+                self.update_window_title()
+                self.status_label.setText(f"Macro loaded from {os.path.basename(file_path)}")
+                QMessageBox.information(self, "Success", "Macro loaded successfully.")
+            else:
+                QMessageBox.critical(self, "Error", "Failed to load macro.")
+                
+        except Exception as e:
+            self.logger.error(f"Error loading macro: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to load macro: {str(e)}")
+            
+    def export_macro(self):
+        """Export selected macro steps"""
+        try:
+            # Get selected steps from macro editor
+            selected_steps = self.macro_editor.get_selected_steps()
+            
+            if not selected_steps:
+                QMessageBox.warning(self, "Warning", "No steps selected for export.")
+                return
+                
+            # Create partial macro
+            macro = self.macro_editor.get_macro()
+            partial_macro = Macro(
+                name=f"{macro.name}_partial",
+                description=f"Partial export of {macro.name}",
+                steps=selected_steps,
+                variables=macro.variables  # Include all variables for now
+            )
+            
+            # Show save dialog
+            file_path, selected_filter = QFileDialog.getSaveFileName(
+                self,
+                "Export Macro Steps",
+                os.path.expanduser("~/"),
+                "JSON files (*.json);;Encrypted files (*.emf);;All files (*.*)"
+            )
+            
+            if not file_path:
+                return
+                
+            # Determine format
+            if file_path.endswith('.emf'):
+                format_type = MacroFormat.ENCRYPTED
+            else:
+                format_type = MacroFormat.JSON
+                if not file_path.endswith('.json'):
+                    file_path += '.json'
+                    
+            # Save partial macro
+            success = self.macro_storage.save_macro(partial_macro, file_path, format_type)
+            
+            if success:
+                self.status_label.setText(f"Exported {len(selected_steps)} steps to {os.path.basename(file_path)}")
+                QMessageBox.information(self, "Success", f"Exported {len(selected_steps)} steps successfully.")
+            else:
+                QMessageBox.critical(self, "Error", "Failed to export macro steps.")
+                
+        except Exception as e:
+            self.logger.error(f"Error exporting macro: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to export macro: {str(e)}")
+            
+    def add_to_recent_macros(self, file_path: str):
+        """Add file to recent macros list"""
+        # Remove if already exists
+        if file_path in self.recent_macros:
+            self.recent_macros.remove(file_path)
+            
+        # Add to front
+        self.recent_macros.insert(0, file_path)
+        
+        # Keep only last 5
+        self.recent_macros = self.recent_macros[:5]
+        
+        # Save to settings
+        self.settings.set("macro.recent_files", self.recent_macros)
+        self.settings.save()
+        
+        # Update menu
+        self.update_recent_macros_menu()
+        
+    def update_recent_macros_menu(self):
+        """Update recent macros menu"""
+        self.recent_macros_menu.clear()
+        
+        if not self.recent_macros:
+            action = QAction("(No recent macros)", self)
+            action.setEnabled(False)
+            self.recent_macros_menu.addAction(action)
+            return
+            
+        for file_path in self.recent_macros:
+            if os.path.exists(file_path):
+                action = QAction(os.path.basename(file_path), self)
+                action.setStatusTip(file_path)
+                action.triggered.connect(lambda checked, path=file_path: self.load_recent_macro(path))
+                self.recent_macros_menu.addAction(action)
+                
+    def load_recent_macro(self, file_path: str):
+        """Load a recent macro"""
+        try:
+            macro = self.macro_storage.load_macro(file_path)
+            
+            if macro:
+                self.macro_editor.set_macro(macro)
+                self.current_macro_path = file_path
+                self.update_window_title()
+                self.status_label.setText(f"Macro loaded from {os.path.basename(file_path)}")
+            else:
+                QMessageBox.critical(self, "Error", f"Failed to load macro from {os.path.basename(file_path)}")
+                self.recent_macros.remove(file_path)
+                self.update_recent_macros_menu()
+                
+        except Exception as e:
+            self.logger.error(f"Error loading recent macro: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to load macro: {str(e)}")
+            
+    def update_window_title(self):
+        """Update window title with current macro file"""
+        title = "Excel Macro Automation"
+        if self.current_macro_path:
+            title += f" - {os.path.basename(self.current_macro_path)}"
+        self.setWindowTitle(title)

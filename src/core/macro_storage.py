@@ -8,9 +8,16 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import shutil
+from enum import Enum
 from utils.encryption import EncryptionManager
 from logger.app_logger import get_logger
 from .macro_types import Macro
+
+
+class MacroFormat(Enum):
+    """Supported macro file formats"""
+    JSON = "json"
+    ENCRYPTED = "encrypted"
 
 class MacroStorage:
     """Handles macro storage, loading, and saving"""
@@ -25,7 +32,7 @@ class MacroStorage:
         self.encryption_manager = EncryptionManager()
         
     def save_macro(self, macro: Macro, file_path: Optional[str] = None, 
-                   encrypt: bool = False, create_backup: bool = True) -> str:
+                   format_type: MacroFormat = MacroFormat.JSON, create_backup: bool = True) -> bool:
         """Save macro to file"""
         if not file_path:
             file_name = f"{macro.name.replace(' ', '_')}_{macro.macro_id[:8]}.json"
@@ -47,16 +54,20 @@ class MacroStorage:
         json_str = json.dumps(data, indent=2, ensure_ascii=False)
         
         # Save file
-        if encrypt:
-            encrypted_data = self.encryption_manager.encrypt(json_str.encode('utf-8'))
-            file_path = file_path.with_suffix('.emacro')
-            file_path.write_bytes(encrypted_data)
-            self.logger.info(f"Saved encrypted macro: {file_path}")
-        else:
-            file_path.write_text(json_str, encoding='utf-8')
-            self.logger.info(f"Saved macro: {file_path}")
-            
-        return str(file_path)
+        try:
+            if format_type == MacroFormat.ENCRYPTED:
+                encrypted_data = self.encryption_manager.encrypt(json_str.encode('utf-8'))
+                file_path = file_path.with_suffix('.emf')
+                file_path.write_bytes(encrypted_data)
+                self.logger.info(f"Saved encrypted macro: {file_path}")
+            else:
+                file_path.write_text(json_str, encoding='utf-8')
+                self.logger.info(f"Saved macro: {file_path}")
+                
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to save macro: {e}")
+            return False
         
     def load_macro(self, file_path: str) -> Macro:
         """Load macro from file"""
@@ -66,7 +77,7 @@ class MacroStorage:
             raise FileNotFoundError(f"Macro file not found: {file_path}")
             
         # Check if encrypted
-        if file_path.suffix == '.emacro':
+        if file_path.suffix in ['.emacro', '.emf']:
             encrypted_data = file_path.read_bytes()
             json_data = self.encryption_manager.decrypt(encrypted_data).decode('utf-8')
             data = json.loads(json_data)

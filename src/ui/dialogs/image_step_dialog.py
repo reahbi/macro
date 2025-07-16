@@ -14,7 +14,7 @@ from PyQt5.QtGui import QPixmap
 from core.macro_types import MacroStep, WaitImageStep, StepType
 from vision.image_matcher import ImageMatcher
 from config.settings import Settings
-from widgets.roi_selector import ROISelectorWidget
+from ui.widgets.roi_selector import ROISelectorWidget
 
 class ImageStepDialog(QDialog):
     """Base dialog for image step configuration"""

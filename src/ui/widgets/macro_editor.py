@@ -96,11 +96,13 @@ class MacroStepWidget(QFrame):
     editRequested = pyqtSignal(MacroStep)
     deleteRequested = pyqtSignal(str)  # step_id
     moveRequested = pyqtSignal(str, int)  # step_id, new_index
+    selectionChanged = pyqtSignal(str, bool)  # step_id, selected
     
     def __init__(self, step: MacroStep, index: int):
         super().__init__()
         self.step = step
         self.index = index
+        self.selected = False
         self.setFrameStyle(QFrame.Box)
         self.setAcceptDrops(True)
         self.init_ui()
@@ -109,6 +111,12 @@ class MacroStepWidget(QFrame):
         """Initialize UI"""
         layout = QHBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Selection checkbox
+        from PyQt5.QtWidgets import QCheckBox
+        self.select_cb = QCheckBox()
+        self.select_cb.toggled.connect(self._on_selection_changed)
+        layout.addWidget(self.select_cb)
         
         # Drag handle
         self.handle = QLabel("≡")
@@ -237,6 +245,22 @@ class MacroStepWidget(QFrame):
             if hasattr(self.step, 'region') and self.step.region:
                 details.append("✓ 영역 지정됨")
                 
+        elif self.step.step_type == StepType.IF_CONDITION:
+            if hasattr(self.step, 'condition_type'):
+                condition_names = {
+                    "image_exists": "이미지가 존재하면",
+                    "text_exists": "텍스트가 존재하면",
+                    "variable_equals": "변수가 같으면",
+                    "variable_contains": "변수가 포함하면",
+                    "variable_greater": "변수가 크면",
+                    "variable_less": "변수가 작으면"
+                }
+                details.append(condition_names.get(self.step.condition_type, self.step.condition_type))
+            if hasattr(self.step, 'true_steps'):
+                details.append(f"참: {len(self.step.true_steps)}개 단계")
+            if hasattr(self.step, 'false_steps'):
+                details.append(f"거짓: {len(self.step.false_steps)}개 단계")
+                
         return " | ".join(details) if details else ""
         
     def _on_enable_toggled(self, checked: bool):
@@ -247,7 +271,15 @@ class MacroStepWidget(QFrame):
         
     def _update_style(self):
         """Update widget style based on state"""
-        if self.step.enabled:
+        if self.selected:
+            self.setStyleSheet("""
+                MacroStepWidget {
+                    background-color: #e3f2fd;
+                    border: 2px solid #2196F3;
+                    border-radius: 5px;
+                }
+            """)
+        elif self.step.enabled:
             self.setStyleSheet("""
                 MacroStepWidget {
                     background-color: white;
@@ -267,6 +299,18 @@ class MacroStepWidget(QFrame):
                     opacity: 0.7;
                 }
             """)
+            
+    def _on_selection_changed(self, checked: bool):
+        """Handle selection change"""
+        self.selected = checked
+        self._update_style()
+        self.selectionChanged.emit(self.step.step_id, checked)
+        
+    def set_selected(self, selected: bool):
+        """Set selection state"""
+        self.select_cb.setChecked(selected)
+        self.selected = selected
+        self._update_style()
             
     def mousePressEvent(self, event):
         """Handle mouse press for dragging"""
@@ -315,6 +359,7 @@ class MacroFlowWidget(QWidget):
         super().__init__()
         self.macro = Macro()
         self.step_widgets: Dict[str, MacroStepWidget] = {}
+        self.selected_steps: Dict[str, bool] = {}  # step_id -> selected
         self.setAcceptDrops(True)
         self.init_ui()
         
@@ -376,11 +421,16 @@ class MacroFlowWidget(QWidget):
         widget.editRequested.connect(self._on_step_edit)
         widget.deleteRequested.connect(self._on_step_delete)
         widget.moveRequested.connect(self.stepMoved.emit)
+        widget.selectionChanged.connect(self._on_selection_changed)
+        
+        # Restore selection state
+        if step.step_id in self.selected_steps:
+            widget.set_selected(self.selected_steps[step.step_id])
+            
         return widget
         
-    def _on_step_edit(self, step_id: str):
+    def _on_step_edit(self, step: MacroStep):
         """Handle step edit request"""
-        step = self.macro.get_step(step_id)
         if not step:
             return
             
@@ -437,6 +487,32 @@ class MacroFlowWidget(QWidget):
                 step.confidence = step_data['confidence']
                 step.click_after_find = step_data['click_after_find']
                 step.click_offset = step_data['click_offset']
+                self._rebuild_ui()
+                self.stepEdited.emit(step_id)
+                
+        elif step.step_type == StepType.IF_CONDITION:
+            from dialogs.if_condition_step_dialog import IfConditionStepDialog
+            # Get Excel columns from parent widget
+            excel_columns = []
+            parent = self.parent()
+            while parent:
+                if hasattr(parent, 'excel_widget'):
+                    excel_manager = parent.excel_widget.get_excel_manager()
+                    if excel_manager and excel_manager._current_data is not None:
+                        excel_columns = list(excel_manager._current_data.columns)
+                    break
+                parent = parent.parent()
+                
+            dialog = IfConditionStepDialog(step, excel_columns, parent=self)
+            if dialog.exec_() == QDialog.Accepted:
+                # Update step with new data
+                step_data = dialog.get_step_data()
+                step.name = step_data['name']
+                step.description = step_data['description']
+                step.condition_type = step_data['condition_type']
+                step.condition_value = step_data['condition_value']
+                step.true_steps = step_data['true_steps']
+                step.false_steps = step_data['false_steps']
                 self._rebuild_ui()
                 self.stepEdited.emit(step_id)
         else:
@@ -533,6 +609,18 @@ class MacroFlowWidget(QWidget):
                     return i
                     
         return len(self.macro.steps)
+        
+    def _on_selection_changed(self, step_id: str, selected: bool):
+        """Handle step selection change"""
+        self.selected_steps[step_id] = selected
+        
+    def get_selected_steps(self) -> List[MacroStep]:
+        """Get list of selected steps"""
+        selected = []
+        for step in self.macro.steps:
+            if self.selected_steps.get(step.step_id, False):
+                selected.append(step)
+        return selected
 
 class MacroEditorWidget(QWidget):
     """Complete macro editor with palette and flow"""
@@ -596,6 +684,10 @@ class MacroEditorWidget(QWidget):
     def get_macro(self) -> Macro:
         """Get the current macro"""
         return self.flow_widget.macro
+        
+    def get_selected_steps(self) -> List[MacroStep]:
+        """Get list of selected steps"""
+        return self.flow_widget.get_selected_steps()
         
     def _on_change(self):
         """Handle macro change"""

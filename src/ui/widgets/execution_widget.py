@@ -275,6 +275,17 @@ class ExecutionWidget(QWidget):
         # Log display
         log_group = QGroupBox("실행 로그")
         log_layout = QVBoxLayout()
+        
+        # Log toolbar
+        log_toolbar_layout = QHBoxLayout()
+        log_toolbar_layout.addStretch()
+        
+        view_logs_btn = QPushButton("CSV 로그 보기")
+        view_logs_btn.clicked.connect(self.show_log_viewer)
+        log_toolbar_layout.addWidget(view_logs_btn)
+        
+        log_layout.addLayout(log_toolbar_layout)
+        
         self.log_widget = ExecutionLogWidget()
         log_layout.addWidget(self.log_widget)
         log_group.setLayout(log_layout)
@@ -384,7 +395,18 @@ class ExecutionWidget(QWidget):
     def _on_error(self, error_msg: str):
         """Handle execution error"""
         self.logger.error(f"Execution error: {error_msg}")
-        # Could show error dialog here
+        
+        # Show error dialog
+        from dialogs.error_report_dialog import ErrorReportDialog
+        from logger.execution_logger import get_execution_logger
+        
+        log_file = get_execution_logger().get_current_log_file()
+        ErrorReportDialog.show_error(
+            "Execution Error",
+            error_msg,
+            log_file=log_file,
+            parent=self
+        )
         
     def _update_elapsed_time(self):
         """Update elapsed time display"""
@@ -394,3 +416,13 @@ class ExecutionWidget(QWidget):
             self.status_widget.update_statistics(
                 total, self.completed_count, self.failed_count, elapsed
             )
+            
+    def show_log_viewer(self):
+        """Show log viewer dialog"""
+        from dialogs.log_viewer_dialog import LogViewerDialog
+        from logger.execution_logger import get_execution_logger
+        
+        # Open with current log file if available
+        log_file = get_execution_logger().get_current_log_file()
+        dialog = LogViewerDialog(log_file=log_file, parent=self)
+        dialog.show()  # Non-modal
