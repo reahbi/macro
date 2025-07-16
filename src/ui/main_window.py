@@ -32,6 +32,10 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self.load_window_state()
         
+        # Apply compact mode if enabled
+        if self.settings.get("ui.compact_mode", False):
+            self.apply_compact_mode(True)
+        
     def init_ui(self):
         """Initialize user interface"""
         self.setWindowTitle("Excel Macro Automation")
@@ -139,6 +143,15 @@ class MainWindow(QMainWindow):
         
         theme_action = QAction("Toggle Theme", self)
         view_menu.addAction(theme_action)
+        
+        # Add compact mode toggle
+        self.compact_mode_action = QAction("Compact Mode", self)
+        self.compact_mode_action.setCheckable(True)
+        self.compact_mode_action.setChecked(self.settings.get("ui.compact_mode", False))
+        self.compact_mode_action.setShortcut("Ctrl+Shift+C")
+        self.compact_mode_action.setStatusTip("Toggle compact mode to reduce UI spacing (Ctrl+Shift+C)")
+        self.compact_mode_action.triggered.connect(self.toggle_compact_mode)
+        view_menu.addAction(self.compact_mode_action)
         
         view_menu.addSeparator()
         
@@ -412,3 +425,162 @@ class MainWindow(QMainWindow):
         if self.current_macro_path:
             title += f" - {os.path.basename(self.current_macro_path)}"
         self.setWindowTitle(title)
+        
+    def toggle_compact_mode(self):
+        """Toggle compact mode for the UI"""
+        is_compact = self.compact_mode_action.isChecked()
+        self.settings.set("ui.compact_mode", is_compact)
+        self.settings.save()
+        
+        # Apply compact mode styling
+        self.apply_compact_mode(is_compact)
+        self.status_label.setText(f"Compact mode {'enabled' if is_compact else 'disabled'}")
+        
+    def apply_compact_mode(self, is_compact: bool):
+        """Apply compact mode styling to the application"""
+        if is_compact:
+            # Compact mode stylesheet
+            compact_style = """
+            /* General compact styling */
+            QWidget {
+                font-size: 11px;
+            }
+            
+            /* Reduce padding in tabs */
+            QTabBar::tab {
+                padding: 3px 8px;
+                min-height: 20px;
+            }
+            
+            /* Compact buttons */
+            QPushButton {
+                padding: 3px 8px;
+                min-height: 22px;
+            }
+            
+            /* Compact list items */
+            QListWidget::item {
+                padding: 2px;
+                min-height: 20px;
+            }
+            
+            /* Compact table rows */
+            QTableWidget::item {
+                padding: 2px;
+            }
+            
+            /* Compact menu items */
+            QMenu::item {
+                padding: 3px 20px 3px 10px;
+            }
+            
+            /* Compact group boxes */
+            QGroupBox {
+                margin-top: 1ex;
+                padding-top: 10px;
+            }
+            
+            QGroupBox::title {
+                top: -7px;
+                left: 10px;
+            }
+            
+            /* Compact status bar */
+            QStatusBar {
+                min-height: 18px;
+                font-size: 10px;
+            }
+            
+            /* Compact splitters */
+            QSplitter::handle {
+                background-color: #ddd;
+                height: 3px;
+            }
+            
+            /* Compact scroll bars */
+            QScrollBar:vertical {
+                width: 10px;
+            }
+            
+            QScrollBar:horizontal {
+                height: 10px;
+            }
+            
+            /* Compact line edits */
+            QLineEdit, QTextEdit, QPlainTextEdit {
+                padding: 2px;
+            }
+            
+            /* Compact spin boxes */
+            QSpinBox, QDoubleSpinBox {
+                padding: 2px;
+                min-height: 20px;
+            }
+            
+            /* Compact combo boxes */
+            QComboBox {
+                padding: 2px 5px;
+                min-height: 20px;
+            }
+            
+            /* Compact tool buttons */
+            QToolButton {
+                padding: 2px;
+                min-height: 20px;
+                min-width: 20px;
+            }
+            
+            /* Compact dialogs */
+            QDialog {
+                font-size: 11px;
+            }
+            
+            /* Compact labels */
+            QLabel {
+                margin: 1px;
+            }
+            
+            /* Compact progress bars */
+            QProgressBar {
+                min-height: 14px;
+                max-height: 14px;
+                font-size: 10px;
+            }
+            
+            /* Compact checkboxes and radio buttons */
+            QCheckBox, QRadioButton {
+                spacing: 3px;
+            }
+            
+            /* Compact tree widget */
+            QTreeWidget::item {
+                padding: 1px;
+                min-height: 18px;
+            }
+            """
+            self.setStyleSheet(compact_style)
+            
+            # Apply specific compact settings to widgets
+            self._apply_compact_to_widgets(True)
+        else:
+            # Reset to normal styling
+            self.setStyleSheet("")
+            self._apply_compact_to_widgets(False)
+            
+    def _apply_compact_to_widgets(self, is_compact: bool):
+        """Apply compact mode settings to specific widgets"""
+        # Set tab widget spacing
+        if is_compact:
+            self.tab_widget.setDocumentMode(True)
+            self.centralWidget().layout().setContentsMargins(5, 5, 5, 5)
+            self.centralWidget().layout().setSpacing(5)
+        else:
+            self.tab_widget.setDocumentMode(False)
+            self.centralWidget().layout().setContentsMargins(9, 9, 9, 9)
+            self.centralWidget().layout().setSpacing(6)
+            
+        # Apply to child widgets if they have compact mode support
+        for i in range(self.tab_widget.count()):
+            widget = self.tab_widget.widget(i)
+            if hasattr(widget, 'set_compact_mode'):
+                widget.set_compact_mode(is_compact)

@@ -865,3 +865,30 @@ class MacroEditorWidget(QWidget):
         """Handle step edit request"""
         # This will be connected to step configuration dialog
         pass
+        
+    def set_compact_mode(self, is_compact: bool):
+        """Apply compact mode to the macro editor"""
+        if is_compact:
+            # Adjust palette width
+            self.palette.setMaximumWidth(150)
+            
+            # Find the splitter and adjust sizes
+            splitter = self.findChild(QSplitter)
+            if splitter:
+                splitter.setSizes([150, 850])
+                
+            # Adjust group box margins
+            for group_box in self.findChildren(QGroupBox):
+                group_box.setContentsMargins(5, 15, 5, 5)
+        else:
+            # Reset to normal sizes
+            self.palette.setMaximumWidth(200)
+            
+            # Reset splitter
+            splitter = self.findChild(QSplitter)
+            if splitter:
+                splitter.setSizes([200, 800])
+                
+            # Reset group box margins
+            for group_box in self.findChildren(QGroupBox):
+                group_box.setContentsMargins(9, 20, 9, 9)

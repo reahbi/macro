@@ -27,7 +27,8 @@ class Settings:
         "ui": {
             "window_size": [1280, 720],
             "show_tooltips": True,
-            "confirm_exit": True
+            "confirm_exit": True,
+            "compact_mode": False
         }
     }
     

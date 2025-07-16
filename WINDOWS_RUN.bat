@@ -1,6 +1,5 @@
 @echo off
-REM === 가장 간단한 Windows 실행 스크립트 ===
-REM 임시 폴더에 복사하여 UNC 경로 문제 해결
+REM === Windows 실행 스크립트 ===
 
 cls
 
@@ -9,25 +8,9 @@ echo Excel Macro Automation Tool
 echo ===============================
 echo.
 
-REM 로컬 임시 폴더 생성
-set WORK_DIR=C:\temp\excel_macro
-echo 작업 폴더: %WORK_DIR%
-
-REM 기존 폴더 삭제
-if exist "%WORK_DIR%" (
-    echo 기존 폴더 정리 중...
-    rd /s /q "%WORK_DIR%" 2>nul
-)
-
-REM 새 폴더 생성
-mkdir "%WORK_DIR%"
-
-REM 파일 복사
-echo 파일 복사 중...
-xcopy "%~dp0*" "%WORK_DIR%\" /E /I /Q /Y >nul
-
-REM 작업 디렉토리로 이동
-cd /d "%WORK_DIR%"
+REM 현재 디렉토리로 이동
+cd /d "%~dp0"
+echo 작업 폴더: %CD%
 
 REM Python 확인
 python --version >nul 2>&1
@@ -74,9 +57,26 @@ echo 애플리케이션 시작 중...
 echo ===============================
 echo.
 
+REM 파일 존재 확인
+if not exist "run_main_fixed.py" (
+    echo.
+    echo [오류] run_main_fixed.py 파일을 찾을 수 없습니다!
+    echo 현재 디렉토리: %CD%
+    echo.
+    pause
+    exit /b
+)
+
 python run_main_fixed.py
 
 REM 종료 시 일시정지 (오류 발생 여부와 관계없이)
+if errorlevel 1 (
+    echo.
+    echo [오류] 프로그램 실행 중 오류가 발생했습니다.
+    echo.
+)
+
 echo.
 echo === 프로그램 종료 ===
-pause
+echo 아무 키나 누르면 창이 닫힙니다...
+pause >nul

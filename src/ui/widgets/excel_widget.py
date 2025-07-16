@@ -145,3 +145,41 @@ class ExcelWidget(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "저장 오류", f"파일 저장 중 오류가 발생했습니다:\n{str(e)}")
                 self.logger.error(f"Failed to save Excel file: {e}")
+                
+    def set_compact_mode(self, is_compact: bool):
+        """Apply compact mode to the Excel widget"""
+        # Find the splitter
+        splitter = self.findChild(QSplitter)
+        
+        if is_compact:
+            # Reduce splitter sizes and spacing
+            if splitter:
+                splitter.setSizes([200, 200, 300])
+                
+            # Apply compact mode to child widgets
+            if hasattr(self.file_selector, 'set_compact_mode'):
+                self.file_selector.set_compact_mode(is_compact)
+            if hasattr(self.sheet_mapper, 'set_compact_mode'):
+                self.sheet_mapper.set_compact_mode(is_compact)
+            if hasattr(self.data_preview, 'set_compact_mode'):
+                self.data_preview.set_compact_mode(is_compact)
+                
+            # Reduce layout margins
+            self.layout().setContentsMargins(5, 5, 5, 5)
+            self.layout().setSpacing(5)
+        else:
+            # Reset to normal sizes
+            if splitter:
+                splitter.setSizes([300, 300, 400])
+                
+            # Reset child widgets
+            if hasattr(self.file_selector, 'set_compact_mode'):
+                self.file_selector.set_compact_mode(is_compact)
+            if hasattr(self.sheet_mapper, 'set_compact_mode'):
+                self.sheet_mapper.set_compact_mode(is_compact)
+            if hasattr(self.data_preview, 'set_compact_mode'):
+                self.data_preview.set_compact_mode(is_compact)
+                
+            # Reset layout margins
+            self.layout().setContentsMargins(9, 9, 9, 9)
+            self.layout().setSpacing(6)

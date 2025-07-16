@@ -427,3 +427,28 @@ class ExecutionWidget(QWidget):
         log_file = get_execution_logger().get_current_log_file()
         dialog = LogViewerDialog(log_file=log_file, parent=self)
         dialog.show()  # Non-modal
+        
+    def set_compact_mode(self, is_compact: bool):
+        """Apply compact mode to the execution widget"""
+        if is_compact:
+            # Reduce spacing in main layout
+            self.layout().setSpacing(5)
+            self.layout().setContentsMargins(5, 5, 5, 5)
+            
+            # Adjust group boxes
+            for group_box in self.findChildren(QGroupBox):
+                group_box.setContentsMargins(5, 15, 5, 5)
+                
+            # Set compact height for log table rows
+            self.log_widget.verticalHeader().setDefaultSectionSize(22)
+        else:
+            # Reset to normal spacing
+            self.layout().setSpacing(10)
+            self.layout().setContentsMargins(10, 10, 10, 10)
+            
+            # Reset group boxes
+            for group_box in self.findChildren(QGroupBox):
+                group_box.setContentsMargins(9, 20, 9, 9)
+                
+            # Reset log table row height
+            self.log_widget.verticalHeader().setDefaultSectionSize(30)
