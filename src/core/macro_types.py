@@ -438,6 +438,12 @@ class IfConditionStep(MacroStep):
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'IfConditionStep':
+        # StepFactory will be defined later in this module
+        # We need to reference it dynamically to avoid forward reference issues
+        import sys
+        module = sys.modules[__name__]
+        StepFactory = getattr(module, 'StepFactory')
+        
         # Create true/false steps from data
         true_steps = []
         for step_data in data.get("true_steps", []):
@@ -698,6 +704,11 @@ class Macro:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Macro':
         """Create macro from dictionary"""
+        # StepFactory is defined in this module
+        import sys
+        module = sys.modules[__name__]
+        StepFactory = getattr(module, 'StepFactory')
+        
         steps = []
         for step_data in data.get("steps", []):
             steps.append(StepFactory.from_dict(step_data))

@@ -139,6 +139,7 @@ class MacroStepWidget(QFrame):
             details_label = QLabel(details_text)
             details_label.setWordWrap(True)
             details_label.setStyleSheet("color: #666; font-size: 11px;")
+            details_label.setTextFormat(Qt.RichText)  # Enable HTML formatting
             info_layout.addWidget(details_label)
             
         # Step description
@@ -257,9 +258,9 @@ class MacroStepWidget(QFrame):
                 }
                 details.append(condition_names.get(self.step.condition_type, self.step.condition_type))
             if hasattr(self.step, 'true_steps'):
-                details.append(f"참: {len(self.step.true_steps)}개 단계")
+                details.append(f"<span style='color: #4caf50'>✓ 참: {len(self.step.true_steps)}개</span>")
             if hasattr(self.step, 'false_steps'):
-                details.append(f"거짓: {len(self.step.false_steps)}개 단계")
+                details.append(f"<span style='color: #f44336'>✗ 거짓: {len(self.step.false_steps)}개</span>")
                 
         elif self.step.step_type == StepType.SCREENSHOT:
             if hasattr(self.step, 'filename_pattern'):
@@ -295,33 +296,44 @@ class MacroStepWidget(QFrame):
         
     def _update_style(self):
         """Update widget style based on state"""
+        # Special styling for IF_CONDITION and LOOP
+        if self.step.step_type == StepType.IF_CONDITION:
+            base_color = "#fff3e0"  # Orange tint
+            border_color = "#ff9800"
+        elif self.step.step_type == StepType.LOOP:
+            base_color = "#f3e5f5"  # Purple tint
+            border_color = "#9c27b0"
+        else:
+            base_color = "white"
+            border_color = "#ddd"
+            
         if self.selected:
-            self.setStyleSheet("""
-                MacroStepWidget {
+            self.setStyleSheet(f"""
+                MacroStepWidget {{
                     background-color: #e3f2fd;
                     border: 2px solid #2196F3;
                     border-radius: 5px;
-                }
+                }}
             """)
         elif self.step.enabled:
-            self.setStyleSheet("""
-                MacroStepWidget {
-                    background-color: white;
-                    border: 1px solid #ddd;
+            self.setStyleSheet(f"""
+                MacroStepWidget {{
+                    background-color: {base_color};
+                    border: 2px solid {border_color};
                     border-radius: 5px;
-                }
-                MacroStepWidget:hover {
+                }}
+                MacroStepWidget:hover {{
                     border-color: #999;
-                }
+                }}
             """)
         else:
-            self.setStyleSheet("""
-                MacroStepWidget {
+            self.setStyleSheet(f"""
+                MacroStepWidget {{
                     background-color: #f5f5f5;
                     border: 1px solid #ddd;
                     border-radius: 5px;
                     opacity: 0.7;
-                }
+                }}
             """)
             
     def _on_selection_changed(self, checked: bool):
@@ -543,30 +555,51 @@ class MacroFlowWidget(QWidget):
                     self.stepEdited.emit(step)
                     
             elif step.step_type == StepType.IF_CONDITION:
-                from ui.dialogs.if_condition_step_dialog import IfConditionStepDialog
-                # Get Excel columns from parent widget
-                excel_columns = []
-                parent = self.parent()
-                while parent:
-                    if hasattr(parent, 'excel_widget'):
-                        excel_manager = parent.excel_widget.get_excel_manager()
-                        if excel_manager and excel_manager._current_data is not None:
-                            excel_columns = list(excel_manager._current_data.columns)
-                        break
-                    parent = parent.parent()
+                print(f"DEBUG: Opening IF_CONDITION dialog for step: {step.step_id}")
+                try:
+                    from ui.dialogs.if_condition_step_dialog import IfConditionStepDialog
+                    print(f"DEBUG: Successfully imported IfConditionStepDialog")
                     
-                dialog = IfConditionStepDialog(step, excel_columns, parent=self)
-                if dialog.exec_() == QDialog.Accepted:
-                    # Update step with new data
-                    step_data = dialog.get_step_data()
-                    step.name = step_data['name']
-                    step.description = step_data['description']
-                    step.condition_type = step_data['condition_type']
-                    step.condition_value = step_data['condition_value']
-                    step.true_steps = step_data['true_steps']
-                    step.false_steps = step_data['false_steps']
-                    self._rebuild_ui()
-                    self.stepEdited.emit(step)
+                    # Get Excel columns from parent widget
+                    excel_columns = []
+                    parent = self.parent()
+                    while parent:
+                        if hasattr(parent, 'excel_widget'):
+                            excel_manager = parent.excel_widget.get_excel_manager()
+                            if excel_manager and excel_manager._current_data is not None:
+                                excel_columns = list(excel_manager._current_data.columns)
+                            break
+                        parent = parent.parent()
+                    print(f"DEBUG: Excel columns: {excel_columns}")
+                    
+                    # Create and show dialog
+                    print(f"DEBUG: Creating IfConditionStepDialog")
+                    dialog = IfConditionStepDialog(step, excel_columns, parent=self)
+                    print(f"DEBUG: Executing IfConditionStepDialog")
+                    
+                    if dialog.exec_() == QDialog.Accepted:
+                        # Update step with new data
+                        step_data = dialog.get_step_data()
+                        print(f"DEBUG: Got step data: {step_data.keys()}")
+                        
+                        step.name = step_data['name']
+                        step.description = step_data.get('description', '')
+                        step.condition_type = step_data['condition_type']
+                        step.condition_value = step_data['condition_value']
+                        step.true_steps = step_data['true_steps']
+                        step.false_steps = step_data['false_steps']
+                        
+                        print(f"DEBUG: Updated step, rebuilding UI")
+                        self._rebuild_ui()
+                        self.stepEdited.emit(step)
+                    else:
+                        print(f"DEBUG: Dialog was cancelled")
+                        
+                except Exception as e:
+                    print(f"ERROR in IF_CONDITION dialog: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    QMessageBox.critical(self, "오류", f"조건문 편집 중 오류가 발생했습니다:\n{str(e)}")
                     
             elif step.step_type == StepType.MOUSE_CLICK:
                 from ui.dialogs.mouse_click_step_dialog import MouseClickStepDialog
@@ -653,20 +686,42 @@ class MacroFlowWidget(QWidget):
                     self.stepEdited.emit(step)
                     
             elif step.step_type == StepType.LOOP:
-                from ui.dialogs.loop_step_dialog import LoopStepDialog
-                # Get all steps in macro for selection
-                all_steps = self.macro.steps
-                dialog = LoopStepDialog(step, all_steps, parent=self)
-                if dialog.exec_() == QDialog.Accepted:
-                    step_data = dialog.get_step_data()
-                    step.name = step_data['name']
-                    step.loop_type = step_data['loop_type']
-                    step.loop_count = step_data['loop_count']
-                    step.loop_steps = step_data['loop_steps']
-                    if 'description' in step_data:
-                        step.description = step_data['description']
-                    self._rebuild_ui()
-                    self.stepEdited.emit(step)
+                print(f"DEBUG: Opening LOOP dialog for step: {step.step_id}")
+                try:
+                    from ui.dialogs.loop_step_dialog import LoopStepDialog
+                    print(f"DEBUG: Successfully imported LoopStepDialog")
+                    
+                    # Get all steps in macro for selection
+                    all_steps = self.macro.steps
+                    print(f"DEBUG: Available steps for loop: {len(all_steps)}")
+                    
+                    # Create and show dialog
+                    print(f"DEBUG: Creating LoopStepDialog")
+                    dialog = LoopStepDialog(step, all_steps, parent=self)
+                    print(f"DEBUG: Executing LoopStepDialog")
+                    
+                    if dialog.exec_() == QDialog.Accepted:
+                        step_data = dialog.get_step_data()
+                        print(f"DEBUG: Got step data: {step_data}")
+                        
+                        step.name = step_data['name']
+                        step.loop_type = step_data['loop_type']
+                        step.loop_count = step_data['loop_count']
+                        step.loop_steps = step_data['loop_steps']
+                        if 'description' in step_data:
+                            step.description = step_data['description']
+                            
+                        print(f"DEBUG: Updated loop step, rebuilding UI")
+                        self._rebuild_ui()
+                        self.stepEdited.emit(step)
+                    else:
+                        print(f"DEBUG: Dialog was cancelled")
+                        
+                except Exception as e:
+                    print(f"ERROR in LOOP dialog: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    QMessageBox.critical(self, "오류", f"반복문 편집 중 오류가 발생했습니다:\n{str(e)}")
                     
             else:
                 # For other step types, emit the signal as before

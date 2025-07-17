@@ -39,6 +39,21 @@ class LoopStepDialog(QDialog):
         
         # Loop type group
         type_group = QGroupBox("반복 타입")
+        type_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #2196F3;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                color: #1976d2;
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+        """)
         type_layout = QVBoxLayout()
         
         # Loop type selection
@@ -109,6 +124,30 @@ class LoopStepDialog(QDialog):
         # Available steps list
         self.steps_list = QListWidget()
         self.steps_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.steps_list.setStyleSheet("""
+            QListWidget {
+                background-color: white;
+                border: 2px solid #2196F3;
+                border-radius: 5px;
+                padding: 5px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                margin: 2px;
+                border: 1px solid #e0e0e0;
+                border-radius: 3px;
+                background-color: #f5f5f5;
+            }
+            QListWidget::item:hover {
+                background-color: #e3f2fd;
+                border-color: #2196F3;
+            }
+            QListWidget::item:selected {
+                background-color: #1976d2;
+                color: white;
+                border-color: #1565c0;
+            }
+        """)
         
         # Add available steps to list
         for step in self.available_steps:

@@ -12,8 +12,57 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QIcon
-from core.macro_types import IfConditionStep, MacroStep, StepFactory, StepType
+from core.macro_types import IfConditionStep, MacroStep, StepType
 from ui.widgets.roi_selector import ROISelectorWidget
+
+class DraggableStepButton(QPushButton):
+    """Draggable button for step types"""
+    
+    def __init__(self, step_type: StepType, text: str):
+        super().__init__(text)
+        self.step_type = step_type
+        self.setStyleSheet("""
+            QPushButton {
+                padding: 8px 12px;
+                border: 2px solid #2196F3;
+                border-radius: 4px;
+                background-color: white;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #e3f2fd;
+                cursor: move;
+            }
+        """)
+        
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.drag_start_position = event.pos()
+            
+    def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.LeftButton):
+            return
+            
+        if (event.pos() - self.drag_start_position).manhattanLength() < 10:
+            return
+            
+        # Start drag
+        from PyQt5.QtGui import QDrag
+        from PyQt5.QtCore import QMimeData, QByteArray, QDataStream, QIODevice
+        
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        
+        # Store step type in MIME data
+        byte_array = QByteArray()
+        stream = QDataStream(byte_array, QIODevice.WriteOnly)
+        stream.writeQString(self.step_type.value)
+        
+        mime_data.setData("application/x-steptype", byte_array)
+        mime_data.setText(self.text())
+        drag.setMimeData(mime_data)
+        
+        drag.exec_(Qt.CopyAction)
 
 class ConditionTypeWidget(QWidget):
     """Widget for configuring condition parameters based on type"""
@@ -64,6 +113,31 @@ class ConditionTypeWidget(QWidget):
         # Region selector
         self.region_selector = ROISelectorWidget()
         form_layout.addRow("검색 영역:", self.region_selector)
+        
+        # Test button
+        self.test_btn = QPushButton("조건 테스트")
+        self.test_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4caf50;
+                color: white;
+                padding: 8px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        self.test_btn.clicked.connect(self._test_image_condition)
+        
+        # Test result
+        self.test_result_label = QLabel()
+        self.test_result_label.setWordWrap(True)
+        
+        test_layout = QVBoxLayout()
+        test_layout.addWidget(self.test_btn)
+        test_layout.addWidget(self.test_result_label)
+        form_layout.addRow("", test_layout)
         
         self.layout.addLayout(form_layout)
         
@@ -138,6 +212,34 @@ class ConditionTypeWidget(QWidget):
             
         return value
         
+    def _test_image_condition(self):
+        """Test image condition"""
+        image_path = self.image_path_edit.text()
+        if not image_path:
+            self.test_result_label.setText("❌ 이미지 파일을 선택해주세요.")
+            self.test_result_label.setStyleSheet("color: red;")
+            return
+            
+        try:
+            import pyautogui
+            # Test image search
+            location = pyautogui.locateOnScreen(
+                image_path,
+                confidence=self.confidence_spin.value(),
+                region=self.region_selector.get_region()
+            )
+            
+            if location:
+                self.test_result_label.setText(f"✅ 이미지를 찾았습니다! 위치: ({location.left}, {location.top})")
+                self.test_result_label.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                self.test_result_label.setText("❌ 이미지를 찾을 수 없습니다.")
+                self.test_result_label.setStyleSheet("color: red;")
+                
+        except Exception as e:
+            self.test_result_label.setText(f"❌ 테스트 중 오류: {str(e)}")
+            self.test_result_label.setStyleSheet("color: red;")
+        
     def set_condition_value(self, value: Dict[str, Any]):
         """Set condition parameters"""
         # Image exists
@@ -170,9 +272,34 @@ class StepListWidget(QListWidget):
         super().__init__()
         self.steps: List[MacroStep] = []
         self.setAcceptDrops(True)
+        self.setDragDropMode(QListWidget.InternalMove)
+        self.setStyleSheet("""
+            QListWidget {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 3px;
+                padding: 5px;
+                min-height: 100px;
+            }
+            QListWidget::item {
+                padding: 5px;
+                margin: 2px;
+                border: 1px solid #e0e0e0;
+                border-radius: 3px;
+            }
+            QListWidget::item:hover {
+                background-color: #f5f5f5;
+                border-color: #bdbdbd;
+            }
+            QListWidget::item:selected {
+                background-color: #e3f2fd;
+                border-color: #2196F3;
+            }
+        """)
         
     def add_step(self, step_type: StepType):
         """Add a new step of given type"""
+        from core.macro_types import StepFactory
         step = StepFactory.create_step(step_type)
         
         # Set default name
@@ -229,6 +356,38 @@ class StepListWidget(QListWidget):
             StepType.OCR_TEXT: "🔤"
         }
         return icons.get(step_type, "")
+        
+    def dragEnterEvent(self, event):
+        """Handle drag enter event"""
+        if event.mimeData().hasFormat("application/x-steptype"):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+            
+    def dragMoveEvent(self, event):
+        """Handle drag move event"""
+        if event.mimeData().hasFormat("application/x-steptype"):
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+            
+    def dropEvent(self, event):
+        """Handle drop event"""
+        if event.mimeData().hasFormat("application/x-steptype"):
+            # Extract step type from mime data
+            from PyQt5.QtCore import QDataStream, QIODevice
+            byte_array = event.mimeData().data("application/x-steptype")
+            stream = QDataStream(byte_array, QIODevice.ReadOnly)
+            step_type_str_result = stream.readQString()
+            step_type_str = step_type_str_result[0] if isinstance(step_type_str_result, tuple) else step_type_str_result
+            
+            # Create new step
+            step_type = StepType(step_type_str)
+            self.add_step(step_type)
+            
+            event.acceptProposedAction()
+        else:
+            super().dropEvent(event)
 
 class IfConditionStepDialog(QDialog):
     """Dialog for configuring if condition step"""
@@ -304,13 +463,50 @@ class IfConditionStepDialog(QDialog):
         branches_group = QGroupBox("분기 동작")
         branches_layout = QVBoxLayout()
         
+        # Add help text
+        help_text = QLabel("💡 팁: 아래 단계 유형을 드래그하여 조건 분기에 추가하거나, '단계 추가' 버튼을 사용하세요.")
+        help_text.setWordWrap(True)
+        help_text.setStyleSheet("color: #0066cc; font-size: 12px; padding: 5px; background-color: #e6f2ff; border-radius: 3px;")
+        branches_layout.addWidget(help_text)
+        
+        # Add mini palette
+        palette_layout = QHBoxLayout()
+        palette_label = QLabel("단계 유형:")
+        palette_label.setStyleSheet("font-weight: bold;")
+        palette_layout.addWidget(palette_label)
+        
+        # Create draggable step type buttons
+        step_types = [
+            (StepType.MOUSE_CLICK, "🖱️ 클릭"),
+            (StepType.KEYBOARD_TYPE, "⌨️ 입력"),
+            (StepType.WAIT_TIME, "⏱️ 대기"),
+            (StepType.IMAGE_SEARCH, "🔍 이미지"),
+        ]
+        
+        for step_type, label in step_types:
+            btn = DraggableStepButton(step_type, label)
+            palette_layout.addWidget(btn)
+            
+        palette_layout.addStretch()
+        branches_layout.addLayout(palette_layout)
+        
         # Create splitter for true/false branches
         splitter = QSplitter(Qt.Horizontal)
         
         # True branch
         true_widget = QWidget()
+        true_widget.setStyleSheet("""
+            QWidget {
+                background-color: #e8f5e9;
+                border: 2px solid #4caf50;
+                border-radius: 5px;
+                padding: 5px;
+            }
+        """)
         true_layout = QVBoxLayout()
-        true_layout.addWidget(QLabel("✅ 조건이 참일 때:"))
+        true_label = QLabel("✅ 조건이 참일 때:")
+        true_label.setStyleSheet("font-weight: bold; color: #2e7d32; font-size: 13px;")
+        true_layout.addWidget(true_label)
         
         self.true_steps_list = StepListWidget()
         true_layout.addWidget(self.true_steps_list)
@@ -334,8 +530,18 @@ class IfConditionStepDialog(QDialog):
         
         # False branch
         false_widget = QWidget()
+        false_widget.setStyleSheet("""
+            QWidget {
+                background-color: #ffebee;
+                border: 2px solid #f44336;
+                border-radius: 5px;
+                padding: 5px;
+            }
+        """)
         false_layout = QVBoxLayout()
-        false_layout.addWidget(QLabel("❌ 조건이 거짓일 때:"))
+        false_label = QLabel("❌ 조건이 거짓일 때:")
+        false_label.setStyleSheet("font-weight: bold; color: #c62828; font-size: 13px;")
+        false_layout.addWidget(false_label)
         
         self.false_steps_list = StepListWidget()
         false_layout.addWidget(self.false_steps_list)
