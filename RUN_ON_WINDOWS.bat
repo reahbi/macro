@@ -144,30 +144,25 @@ echo Checking and installing required packages...
 echo This may take a few minutes on first run...
 echo.
 
-REM Check each package individually
-python -c "import PyQt5" 2>nul || (
-    echo Installing PyQt5...
-    pip install PyQt5 --quiet --no-warn-script-location
-)
+REM Upgrade pip first
+echo Upgrading pip...
+python -m pip install --upgrade pip
 
-python -c "import pandas" 2>nul || (
-    echo Installing pandas and openpyxl...
-    pip install pandas openpyxl --quiet --no-warn-script-location
-)
+REM Install all packages at once for simplicity
+echo Installing required packages...
+echo - PyQt5 (GUI framework)
+echo - pandas, openpyxl (Excel processing)  
+echo - pyautogui (automation)
+echo - easyocr (text recognition)
+echo.
 
-python -c "import pyautogui" 2>nul || (
-    echo Installing automation packages...
-    pip install pyautogui pillow opencv-python numpy mss screeninfo --quiet --no-warn-script-location
-)
+pip install PyQt5 pandas openpyxl pyautogui pillow opencv-python numpy mss screeninfo easyocr cryptography
 
-python -c "import easyocr" 2>nul || (
-    echo Installing EasyOCR (this may take a while)...
-    pip install easyocr --quiet --no-warn-script-location
-)
-
-python -c "import cryptography" 2>nul || (
-    echo Installing cryptography...
-    pip install cryptography --quiet --no-warn-script-location
+if errorlevel 1 (
+    echo.
+    echo [WARNING] Some packages may have failed to install
+    echo Continuing anyway...
+    echo.
 )
 
 REM Run the application
@@ -177,20 +172,36 @@ echo Starting application...
 echo ===============================
 echo.
 
-python run_main_fixed.py
+REM Check if we can import basic modules
+echo Testing Python environment...
+python -c "import sys; print(f'Python path: {sys.executable}')" 2>&1
+if errorlevel 1 (
+    echo [ERROR] Python environment issue detected
+    pause
+    exit /b 1
+)
+
+echo Running application...
+echo.
+
+REM Run with explicit error output
+python run_main_fixed.py 2>&1
 
 set EXIT_CODE=%errorlevel%
 
 echo.
+echo ===============================
 if %EXIT_CODE%==0 (
-    echo ===============================
     echo Application closed successfully
-    echo ===============================
 ) else (
-    echo ===============================
     echo Application exited with error: %EXIT_CODE%
-    echo ===============================
+    echo.
+    echo Common issues:
+    echo - Missing packages: Run 'pip install -r requirements.txt'
+    echo - Import errors: Check if all source files were copied
+    echo - Permission issues: Try running as administrator
 )
+echo ===============================
 
 echo.
 echo Press any key to exit...
