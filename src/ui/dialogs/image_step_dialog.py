@@ -41,6 +41,7 @@ class ImageStepDialog(QDialog):
         """Initialize base UI"""
         self.setModal(True)
         self.setMinimumWidth(600)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         
         layout = QVBoxLayout()
         
@@ -308,20 +309,44 @@ class ImageStepDialog(QDialog):
                     else:
                         print(f"DEBUG: Invalid region format: {region}")
                         self.roi_selector.set_region(None)
+                    
+                    # Show dialog and ensure it stays visible
+                    self.setVisible(True)
                     self.show()
+                    self.raise_()
+                    self.activateWindow()
                     print(f"DEBUG: dialog.show() successful")
-                    selector.deleteLater()
+                    
+                    # Force dialog to process events
+                    from PyQt5.QtWidgets import QApplication
+                    QApplication.processEvents()
+                    
+                    # Delay selector cleanup to ensure dialog is fully shown
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(1000, selector.deleteLater)
                 except Exception as e:
                     print(f"DEBUG: Error in on_selection_complete: {e}")
                     import traceback
                     traceback.print_exc()
                     # Still try to show the dialog
+                    self.setVisible(True)
                     self.show()
-                    selector.deleteLater()
+                    self.raise_()
+                    self.activateWindow()
+                    from PyQt5.QtWidgets import QApplication
+                    QApplication.processEvents()
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(1000, selector.deleteLater)
                 
             def on_selection_cancelled():
+                self.setVisible(True)
                 self.show()
-                selector.deleteLater()
+                self.raise_()
+                self.activateWindow()
+                from PyQt5.QtWidgets import QApplication
+                QApplication.processEvents()
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(1000, selector.deleteLater)
                 
             selector.selectionComplete.connect(on_selection_complete)
             selector.selectionCancelled.connect(on_selection_cancelled)
@@ -348,20 +373,44 @@ class ImageStepDialog(QDialog):
                     else:
                         print(f"DEBUG: Invalid overlay region format: {region}")
                         self.roi_selector.set_region(None)
+                    
+                    # Show dialog and ensure it stays visible
+                    self.setVisible(True)
                     self.show()
+                    self.raise_()
+                    self.activateWindow()
                     print(f"DEBUG: overlay dialog.show() successful")
-                    overlay.deleteLater()
+                    
+                    # Force dialog to process events
+                    from PyQt5.QtWidgets import QApplication
+                    QApplication.processEvents()
+                    
+                    # Delay overlay cleanup to ensure dialog is fully shown
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(1000, overlay.deleteLater)
                 except Exception as e:
                     print(f"DEBUG: Error in overlay on_selection_complete: {e}")
                     import traceback
                     traceback.print_exc()
                     # Still try to show the dialog
+                    self.setVisible(True)
                     self.show()
-                    overlay.deleteLater()
+                    self.raise_()
+                    self.activateWindow()
+                    from PyQt5.QtWidgets import QApplication
+                    QApplication.processEvents()
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(1000, overlay.deleteLater)
                 
             def on_selection_cancelled():
+                self.setVisible(True)
                 self.show()
-                overlay.deleteLater()
+                self.raise_()
+                self.activateWindow()
+                from PyQt5.QtWidgets import QApplication
+                QApplication.processEvents()
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(1000, overlay.deleteLater)
                 
             overlay.selectionComplete.connect(on_selection_complete)
             overlay.selectionCancelled.connect(on_selection_cancelled)
