@@ -47,16 +47,25 @@ if errorlevel 1 (
 )
 
 REM Copy files
-echo Copying files...
-xcopy "%CURRENT_PATH%*" "%WORK_DIR%\" /E /I /Q /Y >nul 2>&1
-if errorlevel 1 (
+echo Copying files from WSL...
+echo This may take a moment...
+REM Use robocopy for better UNC path support
+robocopy "%CURRENT_PATH%." "%WORK_DIR%" /E /NFL /NDL /NJH /NJS /nc /ns /np
+if errorlevel 8 (
     echo.
     echo [ERROR] File copy failed!
     echo Source: %CURRENT_PATH%
     echo Target: %WORK_DIR%
     echo.
-    pause
-    exit /b
+    echo Trying alternative copy method...
+    REM Try PowerShell as fallback
+    powershell -Command "Copy-Item -Path '%CURRENT_PATH%*' -Destination '%WORK_DIR%' -Recurse -Force" 2>nul
+    if errorlevel 1 (
+        echo [ERROR] Alternative copy also failed!
+        echo Please copy files manually to %WORK_DIR%
+        pause
+        exit /b
+    )
 )
 
 REM Change to working directory
