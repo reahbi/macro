@@ -353,6 +353,7 @@ class TextSearchStep(MacroStep):
     confidence: float = 0.5
     click_after_find: bool = True
     click_offset: Tuple[int, int] = (0, 0)  # Offset from center of found text
+    double_click: bool = False  # Whether to double click
     
     def validate(self) -> List[str]:
         errors = []
@@ -371,7 +372,8 @@ class TextSearchStep(MacroStep):
             "exact_match": self.exact_match,
             "confidence": self.confidence,
             "click_after_find": self.click_after_find,
-            "click_offset": list(self.click_offset)
+            "click_offset": list(self.click_offset),
+            "double_click": self.double_click
         })
         return data
     
@@ -392,7 +394,8 @@ class TextSearchStep(MacroStep):
             exact_match=data.get("exact_match", False),
             confidence=data.get("confidence", 0.5),
             click_after_find=data.get("click_after_find", True),
-            click_offset=tuple(click_offset)
+            click_offset=tuple(click_offset),
+            double_click=data.get("double_click", False)
         )
 
 # Flow Control Steps

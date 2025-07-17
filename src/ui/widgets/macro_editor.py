@@ -551,6 +551,7 @@ class MacroFlowWidget(QWidget):
                     step.confidence = step_data['confidence']
                     step.click_after_find = step_data['click_after_find']
                     step.click_offset = step_data['click_offset']
+                    step.double_click = step_data.get('double_click', False)
                     self._rebuild_ui()
                     self.stepEdited.emit(step)
                     

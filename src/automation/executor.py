@@ -331,8 +331,13 @@ class StepExecutor:
                 click_x = result.center[0] + step.click_offset[0]
                 click_y = result.center[1] + step.click_offset[1]
                 
-                pyautogui.click(click_x, click_y)
-                self.logger.debug(f"Clicked at: ({click_x}, {click_y})")
+                # Perform click
+                if hasattr(step, 'double_click') and step.double_click:
+                    pyautogui.doubleClick(click_x, click_y)
+                    self.logger.debug(f"Double clicked at: ({click_x}, {click_y})")
+                else:
+                    pyautogui.click(click_x, click_y)
+                    self.logger.debug(f"Clicked at: ({click_x}, {click_y})")
                 
             return result.center
         else:

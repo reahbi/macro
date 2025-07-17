@@ -289,9 +289,14 @@ class ImageStepDialog(QDialog):
             
     def _select_region(self):
         """Start region selection"""
-        # Temporarily hide dialog
+        # Hide dialog temporarily
         self.hide()
+        # Give time for dialog to hide before showing ROI selector
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(200, self._show_region_selector)
         
+    def _show_region_selector(self):
+        """Show region selector overlay"""
         # Try simple selector first (better for WSL)
         try:
             from ui.widgets.simple_roi_selector import SimpleROISelector

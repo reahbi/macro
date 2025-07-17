@@ -161,6 +161,22 @@ class TextSearchStepDialog(QDialog):
         self.click_after_find_check.setChecked(True)
         click_layout.addRow("동작:", self.click_after_find_check)
         
+        # Click type selection
+        click_type_widget = QWidget()
+        click_type_layout = QHBoxLayout()
+        click_type_layout.setContentsMargins(0, 0, 0, 0)
+        click_type_layout.addWidget(QLabel("클릭 유형:"))
+        self.click_type_combo = QComboBox()
+        self.click_type_combo.addItems(["한번 클릭", "더블 클릭"])
+        self.click_type_combo.setCurrentIndex(0)
+        click_type_layout.addWidget(self.click_type_combo)
+        click_type_layout.addStretch()
+        click_type_widget.setLayout(click_type_layout)
+        click_layout.addRow("", click_type_widget)
+        
+        # Enable/disable click type based on click checkbox
+        self.click_after_find_check.toggled.connect(self.click_type_combo.setEnabled)
+        
         # Click offset
         offset_widget = QWidget()
         offset_layout = QHBoxLayout()
@@ -223,6 +239,10 @@ class TextSearchStepDialog(QDialog):
         self.click_after_find_check.setChecked(self.step.click_after_find)
         self.offset_x_spin.setValue(self.step.click_offset[0])
         self.offset_y_spin.setValue(self.step.click_offset[1])
+        
+        # Set click type
+        if hasattr(self.step, 'double_click'):
+            self.click_type_combo.setCurrentIndex(1 if self.step.double_click else 0)
         
     def _select_region(self):
         """Select screen region"""
@@ -527,5 +547,6 @@ class TextSearchStepDialog(QDialog):
             'exact_match': self.exact_match_check.isChecked(),
             'confidence': self.confidence_spin.value(),
             'click_after_find': self.click_after_find_check.isChecked(),
-            'click_offset': (self.offset_x_spin.value(), self.offset_y_spin.value())
+            'click_offset': (self.offset_x_spin.value(), self.offset_y_spin.value()),
+            'double_click': self.click_type_combo.currentIndex() == 1  # True if "더블 클릭" selected
         }
