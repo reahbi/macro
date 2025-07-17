@@ -803,7 +803,8 @@ class MacroFlowWidget(QWidget):
                 stream = QDataStream(byte_array, QIODevice.ReadOnly)
                 step_id_result = stream.readQString()
                 step_id = step_id_result[0] if isinstance(step_id_result, tuple) else step_id_result
-                old_index = stream.readInt()
+                old_index_result = stream.readInt()
+                old_index = old_index_result[0] if isinstance(old_index_result, tuple) else old_index_result
                 
                 # Adjust drop index if moving down
                 if old_index < drop_index:

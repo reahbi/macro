@@ -8,7 +8,8 @@ from PyQt5.QtWidgets import (
     QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox,
     QPushButton, QLabel, QGroupBox, QListWidget,
     QListWidgetItem, QTextEdit, QWidget, QSplitter,
-    QMessageBox, QCompleter, QCheckBox, QFileDialog
+    QMessageBox, QCompleter, QCheckBox, QFileDialog,
+    QMenu
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QIcon
@@ -587,8 +588,6 @@ class IfConditionStepDialog(QDialog):
         
     def _create_step_menu(self, step_list: StepListWidget):
         """Create menu for adding steps"""
-        from PyQt5.QtWidgets import QMenu
-        
         menu = QMenu()
         
         # Simple steps only (no nested conditions)
