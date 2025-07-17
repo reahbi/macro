@@ -13,6 +13,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor
 from core.macro_types import TextSearchStep
 from ui.widgets.roi_selector import ROISelectorOverlay
+from ui.widgets.simple_roi_selector import SimpleROISelector
 from vision.text_extractor import TextExtractor
 import pyautogui
 
@@ -252,15 +253,15 @@ class TextSearchStepDialog(QDialog):
         QTimer.singleShot(200, self._show_region_selector)
         
     def _show_region_selector(self):
-        """Show region selector overlay"""
+        """안정적인 SimpleROISelector를 사용하여 영역 선택"""
         try:
-            print("DEBUG: Creating ROI selector")
-            # Create ROI selector as a top-level window
-            self.roi_selector = ROISelectorOverlay(parent=None)
-            self.roi_selector.selectionComplete.connect(self._on_region_selected)
-            self.roi_selector.selectionCancelled.connect(lambda: self.show())
-            print("DEBUG: Starting ROI selection")
-            self.roi_selector.start_selection()
+            print("DEBUG: Creating SimpleROISelector for text search")
+            # 새로운 안정적인 ROI 선택기 사용
+            self.simple_roi_selector = SimpleROISelector(parent=None)
+            self.simple_roi_selector.selectionComplete.connect(self._on_region_selected)
+            self.simple_roi_selector.selectionCancelled.connect(self._on_selection_cancelled)
+            print("DEBUG: Starting SimpleROI selection")
+            self.simple_roi_selector.start_selection()
         except Exception as e:
             print(f"DEBUG: Error in _show_region_selector: {e}")
             import traceback
@@ -268,9 +269,12 @@ class TextSearchStepDialog(QDialog):
             self.show()
             
     def _on_selection_cancelled(self):
-        """Handle selection cancellation"""
-        print("DEBUG: Selection cancelled")
+        """영역 선택 취소 처리"""
+        print("DEBUG: Text search region selection cancelled")
+        # 다이얼로그 복원
         self.show()
+        self.raise_()
+        self.activateWindow()
         
     def _on_region_selected(self, region: Tuple[int, int, int, int]):
         """Handle region selection"""

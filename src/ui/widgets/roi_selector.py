@@ -1,98 +1,73 @@
 """
 Region of Interest (ROI) selector widget with transparent overlay
+(수정된 버전)
 """
 
-from typing import Optional, Tuple, Callable
+from typing import Optional, Tuple
 from PyQt5.QtWidgets import QWidget, QApplication, QLabel, QVBoxLayout, QDialog
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QTimer
-from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QPixmap, QFont, QCursor, QPalette
+from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QPixmap, QFont
 import sys
 
 class ROISelectorOverlay(QDialog):
     """Transparent overlay for ROI selection"""
     
-    # Signals
-    selectionComplete = pyqtSignal(tuple)  # (x, y, width, height)
+    selectionComplete = pyqtSignal(tuple)
     selectionCancelled = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        print("DEBUG: ROISelectorOverlay __init__ called")
         
-        # Selection state
         self.selecting = False
         self.start_point = QPoint()
         self.end_point = QPoint()
-        self.selection_rect = QRect()
         
-        # UI setup
-        # Use flags that work well on Windows
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Dialog)
-        self.setModal(True)
-        
-        # Make window transparent
+        # --- 수정된 부분 1: 윈도우 플래그 및 속성 ---
+        # Qt.Tool 플래그를 추가하여 작업 표시줄에 나타나지 않도록 하고,
+        # WA_DeleteOnClose는 제거하여 즉시 종료 문제를 방지합니다.
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setWindowOpacity(1.0)
+        # self.setAttribute(Qt.WA_DeleteOnClose) # 즉시 종료 문제로 인해 제거
         
-        # Cursor and mouse tracking
         self.setCursor(Qt.CrossCursor)
         self.setMouseTracking(True)
-        self.setFocusPolicy(Qt.StrongFocus)
         
-        # Cover all screens
         self._setup_multi_monitor()
         
     def _setup_multi_monitor(self):
-        """Setup to cover all monitors"""
-        # Get combined screen geometry
         desktop = QApplication.desktop()
         total_rect = QRect()
-        
         for i in range(desktop.screenCount()):
             screen_rect = desktop.screenGeometry(i)
             total_rect = total_rect.united(screen_rect)
-            
         self.setGeometry(total_rect)
         
     def start_selection(self):
-        """Start ROI selection"""
+        """ROI 선택을 비동기(non-modal) 방식으로 시작합니다."""
         print("DEBUG: ROI start_selection called")
         
-        # Ensure window covers full screen
-        desktop = QApplication.desktop()
-        screen_rect = desktop.screenGeometry()
-        self.setGeometry(screen_rect)
-        
-        # Show window using exec_ for modal dialog
-        print(f"DEBUG: Showing ROI window at {screen_rect}")
-        
-        # Start with a slight delay to ensure proper display
-        QTimer.singleShot(100, self._prepare_selection)
-        
-        # Show as modal dialog
-        self.exec_()
-        
-    def _prepare_selection(self):
-        """Prepare for selection after dialog is shown"""
-        print("DEBUG: _prepare_selection called")
-        self.raise_()
+        # 창을 먼저 표시하고 활성화
+        self.show()
         self.activateWindow()
-        self.grabMouse()
-        self.grabKeyboard()
-        self.update()
+        self.raise_()
         
+        # 짧은 지연 후 마우스와 키보드를 캡처
+        QTimer.singleShot(100, self._grab_input)
+    
     def _grab_input(self):
-        """Grab mouse and keyboard input after delay"""
-        print("DEBUG: _grab_input called")
+        """입력 장치를 캡처합니다."""
+        print("DEBUG: Grabbing mouse and keyboard")
         try:
             self.grabMouse()
             self.grabKeyboard()
             self.setFocus()
-            print("DEBUG: Input grabbed successfully")
         except Exception as e:
             print(f"DEBUG: Error grabbing input: {e}")
-        
+            self.selectionCancelled.emit()
+            self.hide()
+
     def mousePressEvent(self, event):
-        """Handle mouse press"""
         if event.button() == Qt.LeftButton:
             self.selecting = True
             self.start_point = event.globalPos()
@@ -100,127 +75,103 @@ class ROISelectorOverlay(QDialog):
             self.update()
             
     def mouseMoveEvent(self, event):
-        """Handle mouse move"""
         if self.selecting:
             self.end_point = event.globalPos()
             self.update()
             
     def mouseReleaseEvent(self, event):
-        """Handle mouse release"""
         if event.button() == Qt.LeftButton and self.selecting:
             self.selecting = False
-            self.end_point = event.globalPos()
             
-            # Calculate selection rectangle
             x = min(self.start_point.x(), self.end_point.x())
             y = min(self.start_point.y(), self.end_point.y())
             w = abs(self.end_point.x() - self.start_point.x())
             h = abs(self.end_point.y() - self.start_point.y())
             
-            # Emit result if selection is valid
             if w > 5 and h > 5:
                 region = (int(x), int(y), int(w), int(h))
                 self.selectionComplete.emit(region)
+            else:
+                # 너무 작게 드래그하면 취소로 간주
+                self.selectionCancelled.emit()
             
-            self.close()
+            # --- 수정된 부분 2: hide() 호출로 변경 ---
+            # 선택이 끝나면 창을 숨깁니다.
+            self.hide()
+            self.releaseMouse()
+            self.releaseKeyboard()
             
     def keyPressEvent(self, event):
-        """Handle key press"""
         if event.key() == Qt.Key_Escape:
             self.selecting = False
             self.selectionCancelled.emit()
-            self.close()
-            
+            # --- 수정된 부분 3: hide() 호출로 변경 ---
+            self.hide()
+            self.releaseMouse()
+            self.releaseKeyboard()
+
     def paintEvent(self, event):
-        """Paint overlay and selection"""
-        print("DEBUG: paintEvent called")
         painter = QPainter(self)
-        
-        # Fill with semi-transparent color (reduced opacity for better visibility)
         painter.fillRect(self.rect(), QColor(0, 0, 0, 80))
         
-        # If selecting, clear the selection area for better visibility
-        if self.selecting or (self.start_point and self.end_point):
-            # Calculate selection rectangle
+        if self.selecting:
             x = min(self.start_point.x(), self.end_point.x())
             y = min(self.start_point.y(), self.end_point.y())
             w = abs(self.end_point.x() - self.start_point.x())
             h = abs(self.end_point.y() - self.start_point.y())
+            selection_rect = QRect(x, y, w, h)
             
-            # Adjust to widget coordinates
-            selection = QRect(x - self.x(), y - self.y(), w, h)
-            
-            # Clear the selection area (make it transparent)
+            # 전역 좌표를 위젯의 로컬 좌표로 변환
+            local_selection_rect = self.mapFromGlobal(selection_rect.topLeft())
+            selection = QRect(local_selection_rect, selection_rect.size())
+
             painter.setCompositionMode(QPainter.CompositionMode_Clear)
             painter.fillRect(selection, Qt.transparent)
             painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
             
-            # Draw selection border
             painter.setPen(QPen(QColor(50, 150, 250), 3, Qt.SolidLine))
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(selection)
-        
-        # Draw visible text
-        painter.setPen(QColor(255, 255, 255))
-        font = QFont()
-        font.setPointSize(24)
-        font.setBold(True)
-        painter.setFont(font)
-        
-        instructions = "마우스를 드래그하여 영역을 선택하세요. ESC로 취소"
-        rect = self.rect()
-        rect.setTop(50)
-        painter.drawText(rect, Qt.AlignTop | Qt.AlignHCenter, instructions)
-        
-        if self.selecting or (self.start_point and self.end_point):
             
-            # Draw dimensions text
+            self._draw_handles(painter, selection)
+
+            # 크기 정보 텍스트 그리기
             if w > 50 and h > 30:
                 painter.setPen(QColor(255, 255, 255))
                 font = QFont()
                 font.setPointSize(12)
                 font.setBold(True)
                 painter.setFont(font)
-                
                 text = f"{w} × {h}"
                 text_rect = selection.adjusted(5, 5, -5, -5)
                 painter.drawText(text_rect, Qt.AlignTop | Qt.AlignLeft, text)
-                
-            # Draw corner handles
-            self._draw_handles(painter, selection)
-            
+
+        # 안내 텍스트 그리기
+        painter.setPen(QColor(255, 255, 255))
+        font = QFont()
+        font.setPointSize(24)
+        font.setBold(True)
+        painter.setFont(font)
+        instructions = "마우스를 드래그하여 영역을 선택하세요. ESC로 취소"
+        painter.drawText(self.rect().adjusted(0, 50, 0, 0), Qt.AlignTop | Qt.AlignHCenter, instructions)
+
     def _draw_handles(self, painter: QPainter, rect: QRect):
-        """Draw resize handles at corners"""
         handle_size = 8
         painter.setBrush(QBrush(QColor(50, 150, 250)))
         painter.setPen(Qt.NoPen)
-        
-        # Top-left
-        painter.drawRect(rect.x() - handle_size//2, 
-                        rect.y() - handle_size//2,
-                        handle_size, handle_size)
-        
-        # Top-right
-        painter.drawRect(rect.x() + rect.width() - handle_size//2,
-                        rect.y() - handle_size//2,
-                        handle_size, handle_size)
-        
-        # Bottom-left
-        painter.drawRect(rect.x() - handle_size//2,
-                        rect.y() + rect.height() - handle_size//2,
-                        handle_size, handle_size)
-        
-        # Bottom-right
-        painter.drawRect(rect.x() + rect.width() - handle_size//2,
-                        rect.y() + rect.height() - handle_size//2,
-                        handle_size, handle_size)
-                        
-    def close(self):
-        """Clean up and close"""
-        print("DEBUG: ROI close() called")
+        # 핸들 그리는 로직
+        painter.drawRect(rect.topLeft().x() - handle_size//2, rect.topLeft().y() - handle_size//2, handle_size, handle_size)
+        painter.drawRect(rect.topRight().x() - handle_size//2, rect.topRight().y() - handle_size//2, handle_size, handle_size)
+        painter.drawRect(rect.bottomLeft().x() - handle_size//2, rect.bottomLeft().y() - handle_size//2, handle_size, handle_size)
+        painter.drawRect(rect.bottomRight().x() - handle_size//2, rect.bottomRight().y() - handle_size//2, handle_size, handle_size)
+
+    # --- 추가된 부분: closeEvent ---
+    def closeEvent(self, event):
+        """창이 닫힐 때 마우스와 키보드 입력을 반드시 해제합니다."""
+        print("DEBUG: ROI closeEvent called")
         self.releaseMouse()
         self.releaseKeyboard()
-        self.accept()  # Close the dialog properly
+        event.accept()
 
 class ROISelectorWidget(QWidget):
     """Widget for ROI selection with preview"""
@@ -285,7 +236,6 @@ class ROISelectorWidget(QWidget):
         try:
             # Capture the selected region
             import mss
-            import numpy as np
             from PIL import Image
             
             with mss.mss() as sct:
@@ -317,13 +267,12 @@ class ROISelectorWidget(QWidget):
             r, g, b, a = pil_image.split()
             pil_image = Image.merge("RGBA", (b, g, r, a))
             
-        width, height = pil_image.size
-        data = pil_image.tobytes("raw", pil_image.mode)
+        im_data = pil_image.tobytes("raw", "RGBA" if pil_image.mode == "RGBA" else "RGB")
         
-        if pil_image.mode == "RGB":
-            qimage = QImage(data, width, height, QImage.Format_RGB888)
-        elif pil_image.mode == "RGBA":
-            qimage = QImage(data, width, height, QImage.Format_RGBA8888)
+        if pil_image.mode == "RGBA":
+            qimage = QImage(im_data, pil_image.width, pil_image.height, QImage.Format_RGBA8888)
+        else:
+            qimage = QImage(im_data, pil_image.width, pil_image.height, QImage.Format_RGB888)
             
         return qimage
         

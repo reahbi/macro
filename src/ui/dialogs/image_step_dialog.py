@@ -16,6 +16,7 @@ from core.macro_types import MacroStep, WaitImageStep, StepType
 from vision.image_matcher import ImageMatcher
 from config.settings import Settings
 from ui.widgets.roi_selector import ROISelectorWidget
+from ui.widgets.stable_roi_selector import StableROISelector
 from utils.clipboard_utils import save_clipboard_image
 
 class ImageStepDialog(QDialog):
@@ -187,50 +188,73 @@ class ImageStepDialog(QDialog):
                 "캡처 후 '붙여넣기' 버튼을 클릭하세요."
             )
         else:
-            # Try the old method with simple selector
+            # Use the same approach as text search for region selection
             self.hide()
+            # Give time for dialog to hide before showing ROI selector
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(200, self._show_capture_selector)
+    
+    def _show_capture_selector(self):
+        """안정적인 StableROISelector를 사용하여 캡처 영역 선택"""
+        try:
+            print("DEBUG: Creating capture StableROISelector")
+            # 새로운 안정적인 ROI 선택기 사용
+            self.capture_stable_roi_selector = StableROISelector(parent=None)
+            self.capture_stable_roi_selector.selectionComplete.connect(self._on_capture_region_selected)
+            self.capture_stable_roi_selector.selectionCancelled.connect(self._on_capture_selection_cancelled)
+            print("DEBUG: Starting capture stable ROI selection")
+            self.capture_stable_roi_selector.start_selection()
+        except Exception as e:
+            print(f"DEBUG: Error in _show_capture_selector: {e}")
+            import traceback
+            traceback.print_exc()
+            self.show()
             
-            try:
-                # Use simple ROI selector
-                from ui.widgets.simple_roi_selector import SimpleROISelector
-                selector = SimpleROISelector()
+    def _on_capture_selection_cancelled(self):
+        """캡처 영역 선택 취소 처리"""
+        print("DEBUG: Capture selection cancelled")
+        # 다이얼로그 복원
+        self.show()
+        self.raise_()
+        self.activateWindow()
+            
+    def _on_capture_region_selected(self, region: tuple):
+        """Handle capture region selection"""
+        try:
+            if region and len(region) == 4:
+                # Capture the selected region
+                import time
+                import pyautogui
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                filename = f"capture_{timestamp}.png"
                 
-                def on_selection(region):
-                    # Capture the selected region
-                    import time
-                    import pyautogui
-                    timestamp = time.strftime("%Y%m%d_%H%M%S")
-                    filename = f"capture_{timestamp}.png"
-                    
-                    # Create captures directory if needed
-                    captures_dir = os.path.join(os.path.dirname(__file__), "../../../captures")
-                    os.makedirs(captures_dir, exist_ok=True)
-                    
-                    file_path = os.path.join(captures_dir, filename)
-                    
-                    # Capture using pyautogui
-                    x, y, w, h = region
-                    screenshot = pyautogui.screenshot(region=(x, y, w, h))
-                    screenshot.save(file_path)
-                    
-                    # Update UI
-                    self.image_path_input.setText(file_path)
-                    # Delay preview update
-                    from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(50, self._update_preview)
-                    self.show()
-                    
-                selector.selectionComplete.connect(on_selection)
-                selector.selectionCancelled.connect(lambda: self.show())
+                # Create captures directory if needed
+                captures_dir = os.path.join(os.path.dirname(__file__), "../../../captures")
+                os.makedirs(captures_dir, exist_ok=True)
                 
-                # Small delay to ensure dialog is hidden
+                file_path = os.path.join(captures_dir, filename)
+                
+                # Capture using pyautogui
+                x, y, w, h = region
+                screenshot = pyautogui.screenshot(region=(x, y, w, h))
+                screenshot.save(file_path)
+                
+                # Update UI
+                self.image_path_input.setText(file_path)
+                # Delay preview update
                 from PyQt5.QtCore import QTimer
-                QTimer.singleShot(100, selector.start_selection)
-                
-            except Exception as e:
-                print(f"Simple selector error in capture: {e}")
-                self.show()
-                QMessageBox.warning(self, "오류", "화면 캡처 중 오류가 발생했습니다.")
+                QTimer.singleShot(50, self._update_preview)
+            
+            # Restore dialog visibility
+            self.show()
+            self.raise_()
+            self.activateWindow()
+        except Exception as e:
+            print(f"DEBUG: Error in _on_capture_region_selected: {e}")
+            import traceback
+            traceback.print_exc()
+            self.show()
+            QMessageBox.warning(self, "오류", f"화면 캡처 중 오류가 발생했습니다: {str(e)}")
         
     def _paste_from_clipboard(self):
         """Paste image from clipboard"""
@@ -288,7 +312,7 @@ class ImageStepDialog(QDialog):
             self.image_preview.setToolTip("")
             
     def _select_region(self):
-        """Start region selection"""
+        """Select screen region"""
         # Hide dialog temporarily
         self.hide()
         # Give time for dialog to hide before showing ROI selector
@@ -296,133 +320,56 @@ class ImageStepDialog(QDialog):
         QTimer.singleShot(200, self._show_region_selector)
         
     def _show_region_selector(self):
-        """Show region selector overlay"""
-        # Try simple selector first (better for WSL)
+        """안정적인 StableROISelector를 사용하여 영역 선택"""
         try:
-            from ui.widgets.simple_roi_selector import SimpleROISelector
-            selector = SimpleROISelector()
-            
-            def on_selection_complete(region):
-                try:
-                    print(f"DEBUG: ROI selection complete with region: {region}, type: {type(region)}")
-                    # Ensure region is properly formatted
-                    if region and len(region) == 4:
-                        # Convert all values to integers to avoid any type issues
-                        formatted_region = tuple(int(x) for x in region)
-                        self.roi_selector.set_region(formatted_region)
-                        print(f"DEBUG: set_region successful with formatted region: {formatted_region}")
-                    else:
-                        print(f"DEBUG: Invalid region format: {region}")
-                        self.roi_selector.set_region(None)
-                    
-                    # Show dialog and ensure it stays visible
-                    self.setVisible(True)
-                    self.show()
-                    self.raise_()
-                    self.activateWindow()
-                    print(f"DEBUG: dialog.show() successful")
-                    
-                    # Force dialog to process events
-                    from PyQt5.QtWidgets import QApplication
-                    QApplication.processEvents()
-                    
-                    # Delay selector cleanup to ensure dialog is fully shown
-                    from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(1000, selector.deleteLater)
-                except Exception as e:
-                    print(f"DEBUG: Error in on_selection_complete: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Still try to show the dialog
-                    self.setVisible(True)
-                    self.show()
-                    self.raise_()
-                    self.activateWindow()
-                    from PyQt5.QtWidgets import QApplication
-                    QApplication.processEvents()
-                    from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(1000, selector.deleteLater)
-                
-            def on_selection_cancelled():
-                self.setVisible(True)
-                self.show()
-                self.raise_()
-                self.activateWindow()
-                from PyQt5.QtWidgets import QApplication
-                QApplication.processEvents()
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(1000, selector.deleteLater)
-                
-            selector.selectionComplete.connect(on_selection_complete)
-            selector.selectionCancelled.connect(on_selection_cancelled)
-            
-            # Small delay to ensure dialog is hidden
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(100, selector.start_selection)
-            
+            print("DEBUG: Creating StableROISelector for image search")
+            # 새로운 안정적인 ROI 선택기 사용
+            self.stable_roi_selector = StableROISelector(parent=None)
+            self.stable_roi_selector.selectionComplete.connect(self._on_region_selected)
+            self.stable_roi_selector.selectionCancelled.connect(self._on_selection_cancelled)
+            print("DEBUG: Starting stable ROI selection")
+            self.stable_roi_selector.start_selection()
         except Exception as e:
-            print(f"Simple selector error: {e}")
-            # Fallback to original overlay selector
-            from ui.widgets.roi_selector import ROISelectorOverlay
-            overlay = ROISelectorOverlay()
+            print(f"DEBUG: Error in _show_region_selector: {e}")
+            import traceback
+            traceback.print_exc()
+            # Show error message and restore dialog
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "오류", f"영역 선택기 실행 중 오류가 발생했습니다: {e}")
+            self.show()
             
-            def on_selection_complete(region):
-                try:
-                    print(f"DEBUG: Overlay ROI selection complete with region: {region}, type: {type(region)}")
-                    # Ensure region is properly formatted
-                    if region and len(region) == 4:
-                        # Convert all values to integers to avoid any type issues
-                        formatted_region = tuple(int(x) for x in region)
-                        self.roi_selector.set_region(formatted_region)
-                        print(f"DEBUG: overlay set_region successful with formatted region: {formatted_region}")
-                    else:
-                        print(f"DEBUG: Invalid overlay region format: {region}")
-                        self.roi_selector.set_region(None)
-                    
-                    # Show dialog and ensure it stays visible
-                    self.setVisible(True)
-                    self.show()
-                    self.raise_()
-                    self.activateWindow()
-                    print(f"DEBUG: overlay dialog.show() successful")
-                    
-                    # Force dialog to process events
-                    from PyQt5.QtWidgets import QApplication
-                    QApplication.processEvents()
-                    
-                    # Delay overlay cleanup to ensure dialog is fully shown
-                    from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(1000, overlay.deleteLater)
-                except Exception as e:
-                    print(f"DEBUG: Error in overlay on_selection_complete: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Still try to show the dialog
-                    self.setVisible(True)
-                    self.show()
-                    self.raise_()
-                    self.activateWindow()
-                    from PyQt5.QtWidgets import QApplication
-                    QApplication.processEvents()
-                    from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(1000, overlay.deleteLater)
-                
-            def on_selection_cancelled():
-                self.setVisible(True)
-                self.show()
-                self.raise_()
-                self.activateWindow()
-                from PyQt5.QtWidgets import QApplication
-                QApplication.processEvents()
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(1000, overlay.deleteLater)
-                
-            overlay.selectionComplete.connect(on_selection_complete)
-            overlay.selectionCancelled.connect(on_selection_cancelled)
+    def _on_selection_cancelled(self):
+        """영역 선택 취소 처리"""
+        print("DEBUG: Region selection cancelled")
+        # 다이얼로그 복원
+        self.show()
+        self.raise_()
+        self.activateWindow()
             
-            # Small delay to ensure dialog is hidden
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(100, overlay.start_selection)
+    def _on_region_selected(self, region: tuple):
+        """Handle region selection"""
+        try:
+            # Ensure region is properly formatted
+            if region and len(region) == 4:
+                # Convert all values to integers to avoid any type issues
+                formatted_region = tuple(int(x) for x in region)
+                self.roi_selector.set_region(formatted_region)
+                print(f"DEBUG: set_region successful with formatted region: {formatted_region}")
+            else:
+                print(f"DEBUG: Invalid region format: {region}")
+                self.roi_selector.set_region(None)
+            
+            # Restore dialog visibility
+            self.show()
+            self.raise_()
+            self.activateWindow()
+        except Exception as e:
+            print(f"DEBUG: Error in _on_region_selected: {e}")
+            import traceback
+            traceback.print_exc()
+            # Still try to show the dialog
+            self.roi_selector.set_region(None)
+            self.show()
         
     def _clear_region(self):
         """Clear selected region"""

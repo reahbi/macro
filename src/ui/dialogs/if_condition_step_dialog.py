@@ -55,11 +55,8 @@ class DraggableStepButton(QPushButton):
         mime_data = QMimeData()
         
         # Store step type in MIME data
-        byte_array = QByteArray()
-        stream = QDataStream(byte_array, QIODevice.WriteOnly)
-        stream.writeQString(self.step_type.value)
-        
-        mime_data.setData("application/x-steptype", byte_array)
+        # Use setText instead of binary encoding to avoid Qt version issues
+        mime_data.setData("application/x-steptype", self.step_type.value.encode())
         mime_data.setText(self.text())
         drag.setMimeData(mime_data)
         
@@ -376,11 +373,9 @@ class StepListWidget(QListWidget):
         """Handle drop event"""
         if event.mimeData().hasFormat("application/x-steptype"):
             # Extract step type from mime data
-            from PyQt5.QtCore import QDataStream, QIODevice
+            # Use simpler byte decoding to avoid Qt version issues
             byte_array = event.mimeData().data("application/x-steptype")
-            stream = QDataStream(byte_array, QIODevice.ReadOnly)
-            step_type_str_result = stream.readQString()
-            step_type_str = step_type_str_result[0] if isinstance(step_type_str_result, tuple) else step_type_str_result
+            step_type_str = bytes(byte_array).decode('utf-8')
             
             # Create new step
             step_type = StepType(step_type_str)
@@ -434,19 +429,20 @@ class IfConditionStepDialog(QDialog):
         type_layout.addWidget(QLabel("조건 유형:"))
         
         self.condition_type_combo = QComboBox()
-        self.condition_type_combo.addItems([
+        
+        # Add items properly with display text and data
+        condition_items = [
             ("이미지가 존재하면", "image_exists"),
             ("텍스트가 존재하면", "text_exists"),
             ("변수가 같으면", "variable_equals"),
             ("변수가 포함하면", "variable_contains"),
             ("변수가 크면", "variable_greater"),
             ("변수가 작으면", "variable_less")
-        ])
+        ]
         
-        # Set display text
-        for i in range(self.condition_type_combo.count()):
-            self.condition_type_combo.setItemData(i, self.condition_type_combo.itemText(i).split(",")[1].strip(), Qt.UserRole)
-            self.condition_type_combo.setItemText(i, self.condition_type_combo.itemText(i).split(",")[0])
+        for display_text, value in condition_items:
+            self.condition_type_combo.addItem(display_text)
+            self.condition_type_combo.setItemData(self.condition_type_combo.count() - 1, value, Qt.UserRole)
             
         self.condition_type_combo.currentIndexChanged.connect(self._on_condition_type_changed)
         type_layout.addWidget(self.condition_type_combo)

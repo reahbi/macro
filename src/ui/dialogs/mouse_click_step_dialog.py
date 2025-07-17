@@ -12,6 +12,7 @@ from PyQt5.QtGui import QPixmap, QPainter, QPen, QCursor
 import pyautogui
 from core.macro_types import MouseClickStep, MouseButton
 from ui.widgets.roi_selector import ROISelectorWidget
+from ui.widgets.simple_roi_selector import SimpleROISelector
 from utils.monitor_utils import get_monitor_name_for_position, get_monitor_info
 
 
@@ -173,21 +174,51 @@ class MouseClickStepDialog(QDialog):
         
         
     def select_from_screen(self):
-        """Select position from screen"""
+        """화면에서 위치를 선택합니다"""
         self.hide()
+        # 짧은 지연 후 ROI 선택기 표시
+        QTimer.singleShot(200, self._show_position_selector)
         
-        selector = ROISelectorWidget()
-        # For now, just use capture position
-        # TODO: Implement proper screen selection
-        self.capture_position()
-        return
-        
+    def _show_position_selector(self):
+        """위치 선택을 위한 SimpleROISelector 표시"""
+        try:
+            print("DEBUG: Creating position selector for mouse click")
+            self.position_selector = SimpleROISelector(parent=None)
+            self.position_selector.selectionComplete.connect(self._on_position_selected)
+            self.position_selector.selectionCancelled.connect(self._on_position_selection_cancelled)
+            self.position_selector.start_selection()
+        except Exception as e:
+            print(f"DEBUG: Error in position selector: {e}")
+            self.show()
+            
+    def _on_position_selected(self, region: tuple):
+        """선택된 영역의 중심점을 클릭 위치로 설정"""
+        try:
+            if region and len(region) == 4:
+                x, y, w, h = region
+                # 영역의 중심점 계산
+                center_x = x + w // 2
+                center_y = y + h // 2
+                
+                self.x_spin.setValue(center_x)
+                self.y_spin.setValue(center_y)
+                
+                print(f"DEBUG: Position selected: ({center_x}, {center_y})")
+            
+            # 다이얼로그 복원
+            self.show()
+            self.raise_()
+            self.activateWindow()
+        except Exception as e:
+            print(f"DEBUG: Error in _on_position_selected: {e}")
+            self.show()
+            
+    def _on_position_selection_cancelled(self):
+        """위치 선택 취소 처리"""
+        print("DEBUG: Position selection cancelled")
         self.show()
-        
-        if result:
-            x, y = result
-            self.x_spin.setValue(x)
-            self.y_spin.setValue(y)
+        self.raise_()
+        self.activateWindow()
             
     def get_step_data(self):
         """Get configured step data"""

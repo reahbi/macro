@@ -79,12 +79,8 @@ class StepPalette(QListWidget):
             drag = QDrag(self)
             mime_data = QMimeData()
             
-            # Store step type in MIME data
-            byte_array = QByteArray()
-            stream = QDataStream(byte_array, QIODevice.WriteOnly)
-            stream.writeQString(item.step_type.value)
-            
-            mime_data.setData("application/x-steptype", byte_array)
+            # Store step type in MIME data using simple encoding
+            mime_data.setData("application/x-steptype", item.step_type.value.encode())
             mime_data.setText(item.text())
             drag.setMimeData(mime_data)
             
@@ -511,8 +507,10 @@ class MacroFlowWidget(QWidget):
                     self.stepEdited.emit(step)
                     
             elif step.step_type == StepType.IMAGE_SEARCH:
-                from ui.dialogs.image_step_dialog import ImageSearchStepDialog
-                dialog = ImageSearchStepDialog(step, parent=self)
+                print("DEBUG: IMAGE_SEARCH dialog requested")
+                from ui.dialogs.windows_image_search_dialog import WindowsImageSearchDialog
+                print("DEBUG: Using WindowsImageSearchDialog directly")
+                dialog = WindowsImageSearchDialog(step, parent=self)
                 if dialog.exec_() == QDialog.Accepted:
                     # Update step with new data
                     step_data = dialog.get_step_data()
@@ -766,11 +764,9 @@ class MacroFlowWidget(QWidget):
             drop_index = self._get_drop_index(event.pos())
             
             if event.mimeData().hasFormat("application/x-steptype"):
-                # New step from palette
+                # New step from palette using simple decoding
                 byte_array = event.mimeData().data("application/x-steptype")
-                stream = QDataStream(byte_array, QIODevice.ReadOnly)
-                step_type_str_result = stream.readQString()
-                step_type_str = step_type_str_result[0] if isinstance(step_type_str_result, tuple) else step_type_str_result
+                step_type_str = bytes(byte_array).decode('utf-8')
                 
                 step_type = StepType(step_type_str)
                 new_step = StepFactory.create_step(step_type)
