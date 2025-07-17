@@ -94,8 +94,8 @@ class SimpleROISelector(QWidget):
             painter = QPainter(self)
             painter.drawPixmap(0, 0, self.screenshot_pixmap)
             
-            # Darken the screenshot slightly
-            painter.fillRect(self.rect(), QColor(0, 0, 0, 50))
+            # Darken the screenshot slightly (reduced from 50 to 30 for better visibility)
+            painter.fillRect(self.rect(), QColor(0, 0, 0, 30))
             
     def mousePressEvent(self, event):
         """Handle mouse press"""

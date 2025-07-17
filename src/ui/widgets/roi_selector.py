@@ -29,11 +29,9 @@ class ROISelectorOverlay(QDialog):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Dialog)
         self.setModal(True)
         
-        # Set dark background
-        palette = self.palette()
-        palette.setColor(QPalette.Background, QColor(0, 0, 0, 150))
-        self.setPalette(palette)
-        self.setAutoFillBackground(True)
+        # Make window transparent
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowOpacity(1.0)
         
         # Cursor and mouse tracking
         self.setCursor(Qt.CrossCursor)
@@ -138,8 +136,29 @@ class ROISelectorOverlay(QDialog):
         print("DEBUG: paintEvent called")
         painter = QPainter(self)
         
-        # Fill with solid color to ensure visibility
-        painter.fillRect(self.rect(), QColor(50, 50, 50, 200))
+        # Fill with semi-transparent color (reduced opacity for better visibility)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 80))
+        
+        # If selecting, clear the selection area for better visibility
+        if self.selecting or (self.start_point and self.end_point):
+            # Calculate selection rectangle
+            x = min(self.start_point.x(), self.end_point.x())
+            y = min(self.start_point.y(), self.end_point.y())
+            w = abs(self.end_point.x() - self.start_point.x())
+            h = abs(self.end_point.y() - self.start_point.y())
+            
+            # Adjust to widget coordinates
+            selection = QRect(x - self.x(), y - self.y(), w, h)
+            
+            # Clear the selection area (make it transparent)
+            painter.setCompositionMode(QPainter.CompositionMode_Clear)
+            painter.fillRect(selection, Qt.transparent)
+            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            
+            # Draw selection border
+            painter.setPen(QPen(QColor(50, 150, 250), 3, Qt.SolidLine))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(selection)
         
         # Draw visible text
         painter.setPen(QColor(255, 255, 255))
@@ -154,22 +173,6 @@ class ROISelectorOverlay(QDialog):
         painter.drawText(rect, Qt.AlignTop | Qt.AlignHCenter, instructions)
         
         if self.selecting or (self.start_point and self.end_point):
-            # Calculate selection rectangle
-            x = min(self.start_point.x(), self.end_point.x())
-            y = min(self.start_point.y(), self.end_point.y())
-            w = abs(self.end_point.x() - self.start_point.x())
-            h = abs(self.end_point.y() - self.start_point.y())
-            
-            # Adjust to widget coordinates
-            selection = QRect(x - self.x(), y - self.y(), w, h)
-            
-            # Draw selection area with lighter background
-            painter.fillRect(selection, QColor(255, 255, 255, 50))
-            
-            # Draw selection border
-            painter.setPen(QPen(QColor(50, 150, 250), 3, Qt.SolidLine))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawRect(selection)
             
             # Draw dimensions text
             if w > 50 and h > 30:
