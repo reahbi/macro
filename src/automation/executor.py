@@ -241,7 +241,10 @@ class StepExecutor:
         return filename
         
     def _execute_image_search(self, step) -> Optional[Tuple[int, int, int, int]]:
-        """Execute image search"""
+        """Execute image search and optionally click"""
+        location = None
+        center = None
+        
         if self._image_matcher:
             # Use OpenCV-based matcher
             result = self._image_matcher.find_image(
@@ -252,8 +255,10 @@ class StepExecutor:
             
             if result.found:
                 self.logger.debug(f"Image found at: {result.location}")
-                return result.location
+                location = result.location
+                center = result.center
             else:
+                self.logger.debug("Image not found with OpenCV matcher")
                 return None
         else:
             # Fallback to pyautogui
@@ -263,9 +268,32 @@ class StepExecutor:
                     confidence=step.confidence,
                     region=step.region
                 )
-                return location
-            except:
+                if location:
+                    center = pyautogui.center(location)
+                else:
+                    self.logger.debug("Image not found with pyautogui")
+                    return None
+            except Exception as e:
+                self.logger.error(f"Error in image search: {e}")
                 return None
+        
+        # If image was found and click is requested
+        if location and center and step.click_after_find:
+            # Apply click offset
+            click_x = center[0] + step.click_offset[0]
+            click_y = center[1] + step.click_offset[1]
+            
+            self.logger.info(f"Clicking at ({click_x}, {click_y})")
+            
+            # Perform click
+            if step.double_click:
+                pyautogui.doubleClick(click_x, click_y)
+                self.logger.debug("Performed double click")
+            else:
+                pyautogui.click(click_x, click_y)
+                self.logger.debug("Performed single click")
+                
+        return location
             
     def _execute_text_search(self, step) -> Optional[Tuple[int, int]]:
         """Execute text search and optionally click"""

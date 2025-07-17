@@ -510,6 +510,7 @@ class ImageSearchStep(MacroStep):
     region: Optional[tuple] = None  # (x, y, width, height)
     click_after_find: bool = True
     click_offset: Tuple[int, int] = (0, 0)
+    double_click: bool = False
     
     def validate(self) -> List[str]:
         errors = []
@@ -526,7 +527,8 @@ class ImageSearchStep(MacroStep):
             "confidence": self.confidence,
             "region": list(self.region) if self.region else None,
             "click_after_find": self.click_after_find,
-            "click_offset": list(self.click_offset)
+            "click_offset": list(self.click_offset),
+            "double_click": self.double_click
         })
         return data
     
@@ -545,7 +547,8 @@ class ImageSearchStep(MacroStep):
             confidence=data.get("confidence", 0.9),
             region=tuple(region) if region else None,
             click_after_find=data.get("click_after_find", True),
-            click_offset=tuple(click_offset)
+            click_offset=tuple(click_offset),
+            double_click=data.get("double_click", False)
         )
 
 @dataclass

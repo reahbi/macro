@@ -611,11 +611,81 @@ class ImageSearchStepDialog(ImageStepDialog):
         params_group.setLayout(params_layout)
         layout.addWidget(params_group)
         
+        # Click action group
+        click_group = QGroupBox("클릭 옵션")
+        click_layout = QVBoxLayout()
+        
+        # Click after find checkbox
+        self.click_after_find_check = QCheckBox("찾은 후 클릭")
+        self.click_after_find_check.setChecked(True)
+        click_layout.addWidget(self.click_after_find_check)
+        
+        # Click type selection
+        click_type_layout = QHBoxLayout()
+        click_type_layout.addWidget(QLabel("클릭 유형:"))
+        self.click_type_combo = QComboBox()
+        self.click_type_combo.addItems(["한번 클릭", "더블 클릭"])
+        self.click_type_combo.setCurrentIndex(0)
+        click_type_layout.addWidget(self.click_type_combo)
+        click_type_layout.addStretch()
+        click_layout.addLayout(click_type_layout)
+        
+        # Click offset
+        offset_layout = QHBoxLayout()
+        offset_layout.addWidget(QLabel("클릭 오프셋:"))
+        
+        offset_layout.addWidget(QLabel("X:"))
+        self.offset_x_spin = QSpinBox()
+        self.offset_x_spin.setMinimum(-500)
+        self.offset_x_spin.setMaximum(500)
+        self.offset_x_spin.setValue(0)
+        offset_layout.addWidget(self.offset_x_spin)
+        
+        offset_layout.addWidget(QLabel("Y:"))
+        self.offset_y_spin = QSpinBox()
+        self.offset_y_spin.setMinimum(-500)
+        self.offset_y_spin.setMaximum(500)
+        self.offset_y_spin.setValue(0)
+        offset_layout.addWidget(self.offset_y_spin)
+        
+        offset_layout.addStretch()
+        click_layout.addLayout(offset_layout)
+        
+        # Enable/disable click options based on click checkbox
+        self.click_after_find_check.toggled.connect(self.click_type_combo.setEnabled)
+        self.click_after_find_check.toggled.connect(self.offset_x_spin.setEnabled)
+        self.click_after_find_check.toggled.connect(self.offset_y_spin.setEnabled)
+        
+        click_group.setLayout(click_layout)
+        layout.addWidget(click_group)
+        
     def get_custom_data(self) -> Dict[str, Any]:
         """Get search-specific data"""
         return {
             'step_type': StepType.IMAGE_SEARCH,
             'confidence': self.confidence_spin.value(),
             'search_all': self.search_all_check.isChecked(),
-            'max_results': self.max_results_spin.value()
+            'max_results': self.max_results_spin.value(),
+            'click_after_find': self.click_after_find_check.isChecked(),
+            'click_offset': (self.offset_x_spin.value(), self.offset_y_spin.value()),
+            'double_click': self.click_type_combo.currentIndex() == 1  # True if "더블 클릭" selected
         }
+        
+    def load_step_data(self):
+        """Load image search step data"""
+        super().load_step_data()
+        
+        if self.step and hasattr(self.step, 'confidence'):
+            self.confidence_spin.setValue(self.step.confidence)
+            
+        if self.step and hasattr(self.step, 'click_after_find'):
+            self.click_after_find_check.setChecked(self.step.click_after_find)
+            
+        if self.step and hasattr(self.step, 'click_offset'):
+            offset = self.step.click_offset
+            if offset and len(offset) >= 2:
+                self.offset_x_spin.setValue(offset[0])
+                self.offset_y_spin.setValue(offset[1])
+                
+        if self.step and hasattr(self.step, 'double_click'):
+            self.click_type_combo.setCurrentIndex(1 if self.step.double_click else 0)
