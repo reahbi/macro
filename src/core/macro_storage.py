@@ -12,6 +12,7 @@ from enum import Enum
 from utils.encryption import EncryptionManager
 from logger.app_logger import get_logger
 from core.macro_types import Macro
+from utils.macro_loader import load_macro_safe, save_macro_safe
 
 
 class MacroFormat(Enum):
@@ -81,21 +82,24 @@ class MacroStorage:
             encrypted_data = file_path.read_bytes()
             json_data = self.encryption_manager.decrypt(encrypted_data).decode('utf-8')
             data = json.loads(json_data)
+            
+            # Check schema version
+            schema_version = data.get("schema_version", "0.0.0")
+            if schema_version != self.SCHEMA_VERSION:
+                self.logger.warning(f"Schema version mismatch: {schema_version} != {self.SCHEMA_VERSION}")
+                
+            # Load macro
+            macro_data = data.get("macro", {})
+            macro = Macro.from_dict(macro_data)
+            
+            self.logger.info(f"Loaded macro: {macro.name} from {file_path}")
+            return macro
         else:
-            data = json.loads(file_path.read_text(encoding='utf-8'))
-            
-        # Check schema version
-        schema_version = data.get("schema_version", "0.0.0")
-        if schema_version != self.SCHEMA_VERSION:
-            self.logger.warning(f"Schema version mismatch: {schema_version} != {self.SCHEMA_VERSION}")
-            # In future, handle migration here
-            
-        # Load macro
-        macro_data = data.get("macro", {})
-        macro = Macro.from_dict(macro_data)
-        
-        self.logger.info(f"Loaded macro: {macro.name} from {file_path}")
-        return macro
+            # Use safe loader for regular files
+            macro = load_macro_safe(str(file_path))
+            if not macro:
+                raise ValueError(f"Failed to load macro from {file_path}")
+            return macro
         
     def list_macros(self, include_encrypted: bool = True) -> List[Dict[str, Any]]:
         """List all saved macros"""

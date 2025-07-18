@@ -134,6 +134,10 @@ class ExcelWidget(QWidget):
     def get_excel_manager(self) -> ExcelManager:
         """Get Excel manager instance"""
         return self.excel_manager
+    
+    def has_data(self) -> bool:
+        """Check if Excel data is loaded"""
+        return hasattr(self.excel_manager, '_current_data') and self.excel_manager._current_data is not None
         
     def save_current_file(self):
         """Save current Excel file with updates"""

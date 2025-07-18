@@ -10,6 +10,7 @@ import cv2
 from PIL import Image
 import mss
 from logger.app_logger import get_logger
+from utils.monitor_utils import get_total_screen_bounds, get_monitor_at_position
 
 # EasyOCR is required
 import easyocr
@@ -68,7 +69,7 @@ class TextExtractor:
                 x, y, width, height = region
                 monitor = {"left": x, "top": y, "width": width, "height": height}
             else:
-                monitor = self.sct.monitors[1]  # Primary monitor
+                monitor = self.sct.monitors[0]  # All monitors
                 
             # Capture screenshot
             screenshot = self.sct.grab(monitor)
@@ -111,6 +112,13 @@ class TextExtractor:
                         min_y += region[1]
                         center_x += region[0]
                         center_y += region[1]
+                    else:
+                        # When capturing all monitors, need to adjust for monitor offsets
+                        monitor_info = self.sct.monitors[0]
+                        min_x += monitor_info["left"]
+                        min_y += monitor_info["top"]
+                        center_x += monitor_info["left"]
+                        center_y += monitor_info["top"]
                     
                     result = TextResult(
                         text=text,

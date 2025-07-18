@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QDialogButtonBox, QFormLayout, QGroupBox,
     QComboBox, QSpinBox, QListWidget, QListWidgetItem,
-    QAbstractItemView, QMessageBox, QTextEdit
+    QAbstractItemView, QMessageBox, QTextEdit, QWidget
 )
 from PyQt5.QtCore import Qt
 from core.macro_types import LoopStep, MacroStep

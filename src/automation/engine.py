@@ -100,7 +100,7 @@ class ExecutionEngine(QThread):
             self.logger.info(f"State changed: {old_state.value} -> {new_state.value}")
             self.stateChanged.emit(new_state)
             
-    def set_macro(self, macro: Macro, excel_manager: ExcelManager):
+    def set_macro(self, macro: Macro, excel_manager: Optional[ExcelManager] = None):
         """Set macro and Excel manager for execution"""
         if self.state != ExecutionState.IDLE:
             raise RuntimeError("Cannot set macro while execution is active")
@@ -119,8 +119,8 @@ class ExecutionEngine(QThread):
         
     def run(self):
         """Main execution thread"""
-        if not self.macro or not self.excel_manager:
-            self.error.emit("No macro or Excel data loaded")
+        if not self.macro:
+            self.error.emit("No macro loaded")
             return
             
         try:
@@ -132,56 +132,80 @@ class ExecutionEngine(QThread):
             log_file = self.execution_logger.start_session(self.macro.name, excel_file)
             self.logger.info(f"Execution log started: {log_file}")
             
-            # Get rows to process
-            if not self.target_rows:
-                # Process all incomplete rows
-                self.target_rows = self.excel_manager.get_pending_rows()
-                
-            total_rows = len(self.target_rows)
-            self.logger.info(f"Starting execution for {total_rows} rows")
-            
-            # Track statistics
-            successful_rows = 0
-            failed_rows = 0
-            
-            # Execute each row
-            for i, row_index in enumerate(self.target_rows):
-                # Check if stopping
-                if self.state == ExecutionState.STOPPING:
-                    break
+            # Determine execution mode
+            if self.excel_manager:
+                # Excel mode - execute for each row
+                if not self.target_rows:
+                    # Process all incomplete rows
+                    self.target_rows = self.excel_manager.get_pending_rows()
                     
-                # Handle pause
-                self._pause_event.wait()
+                total_rows = len(self.target_rows)
+                self.logger.info(f"Starting execution for {total_rows} rows")
+                
+                # Track statistics
+                successful_rows = 0
+                failed_rows = 0
+                
+                # Execute each row
+                for i, row_index in enumerate(self.target_rows):
+                    # Check if stopping
+                    if self.state == ExecutionState.STOPPING:
+                        break
+                        
+                    # Handle pause
+                    self._pause_event.wait()
+                    
+                    # Update progress
+                    self.progressUpdated.emit(i + 1, total_rows)
+                    self.current_row_index = row_index
+                    
+                    # Execute macro for this row
+                    result = self._execute_row(row_index)
+                    
+                    # Update statistics
+                    if result.success:
+                        successful_rows += 1
+                    else:
+                        failed_rows += 1
+                    
+                    # Update Excel status
+                    status = "완료" if result.success else f"실패: {result.error}"
+                    self.excel_manager.update_row_status(row_index, status)
+                    
+                    # Emit result
+                    self.rowCompleted.emit(result)
+                    
+                    # Small delay between rows
+                    time.sleep(0.1)
+                    
+                # Save Excel file after all rows (only if data exists)
+                if self.excel_manager and self.excel_manager._current_data:
+                    self.excel_manager.save_file()
+                
+            else:
+                # Standalone mode - execute once without Excel data
+                self.logger.info("Starting standalone macro execution")
+                total_rows = 1
+                successful_rows = 0
+                failed_rows = 0
                 
                 # Update progress
-                self.progressUpdated.emit(i + 1, total_rows)
-                self.current_row_index = row_index
+                self.progressUpdated.emit(1, 1)
                 
-                # Execute macro for this row
-                result = self._execute_row(row_index)
+                # Execute macro without row data
+                result = self._execute_standalone()
                 
-                # Update statistics
                 if result.success:
-                    successful_rows += 1
+                    successful_rows = 1
                 else:
-                    failed_rows += 1
-                
-                # Update Excel status
-                status = "완료" if result.success else f"실패: {result.error}"
-                self.excel_manager.update_row_status(row_index, status)
-                
+                    failed_rows = 1
+                    
                 # Emit result
                 self.rowCompleted.emit(result)
-                
-                # Small delay between rows
-                time.sleep(0.1)
-                
-            # Save Excel file after all rows
-            self.excel_manager.save_file()
             
             # Log session summary
             self.execution_logger.log_session_end(
-                total_rows=len(self.target_rows),
+                total_rows=total_rows,
                 successful_rows=successful_rows,
                 failed_rows=failed_rows
             )
@@ -291,6 +315,95 @@ class ExecutionEngine(QThread):
             duration_ms = (time.time() - start_time) * 1000
             self.execution_logger.log_row_complete(row_index, False, duration_ms, str(e))
             return ExecutionResult(row_index, False, str(e), duration_ms)
+    
+    def _execute_standalone(self) -> ExecutionResult:
+        """Execute macro without Excel data"""
+        start_time = time.time()
+        
+        try:
+            # Log standalone execution start
+            self.execution_logger.log_row_start(0, {})
+            
+            # Set empty variables in executor context
+            self.step_executor.set_variables({})
+            
+            # Execute each step
+            for step_index, step in enumerate(self.macro.steps):
+                # Check if stopping
+                if self.state == ExecutionState.STOPPING:
+                    return ExecutionResult(0, False, "Execution stopped")
+                    
+                # Handle pause
+                self._pause_event.wait()
+                
+                # Skip disabled steps
+                if not step.enabled:
+                    continue
+                    
+                # Emit step executing signal
+                self.stepExecuting.emit(step, 0)
+                
+                # Execute step
+                step_start_time = time.time()
+                step_success = False
+                step_error = ""
+                
+                try:
+                    self.step_executor.execute_step(step)
+                    step_success = True
+                except Exception as e:
+                    error_msg = f"Step '{step.name}' failed: {str(e)}"
+                    self.logger.error(error_msg)
+                    step_error = str(e)
+                    
+                    # Emit detailed error for UI
+                    if step.error_handling.value == "stop":
+                        self.error.emit(error_msg)
+                    
+                    # Handle error based on step configuration
+                    if step.error_handling.value == "stop":
+                        # Log failed step
+                        step_duration = (time.time() - step_start_time) * 1000
+                        self.execution_logger.log_step_execution(
+                            0, step_index, step.name, step.step_type.value,
+                            False, step_duration, step_error
+                        )
+                        return ExecutionResult(0, False, error_msg)
+                    elif step.error_handling.value == "retry":
+                        # Retry logic
+                        for retry in range(step.retry_count):
+                            try:
+                                time.sleep(1)  # Wait before retry
+                                self.step_executor.execute_step(step)
+                                step_success = True
+                                step_error = ""
+                                break
+                            except:
+                                if retry == step.retry_count - 1:
+                                    # Log failed step after all retries
+                                    step_duration = (time.time() - step_start_time) * 1000
+                                    self.execution_logger.log_step_execution(
+                                        0, step_index, step.name, step.step_type.value,
+                                        False, step_duration, step_error
+                                    )
+                                    return ExecutionResult(0, False, error_msg)
+                    # For "continue", just log and proceed
+                
+                # Log step execution result
+                step_duration = (time.time() - step_start_time) * 1000
+                self.execution_logger.log_step_execution(
+                    0, step_index, step.name, step.step_type.value,
+                    step_success, step_duration, step_error
+                )
+                    
+            duration_ms = (time.time() - start_time) * 1000
+            self.execution_logger.log_row_complete(0, True, duration_ms)
+            return ExecutionResult(0, True, None, duration_ms)
+            
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            self.execution_logger.log_row_complete(0, False, duration_ms, str(e))
+            return ExecutionResult(0, False, str(e), duration_ms)
             
     def toggle_pause(self):
         """Toggle pause state"""

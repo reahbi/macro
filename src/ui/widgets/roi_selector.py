@@ -15,7 +15,7 @@ class ROISelectorOverlay(QDialog):
     selectionComplete = pyqtSignal(tuple)  # (x, y, width, height)
     selectionCancelled = pyqtSignal()
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, monitor_bounds=None):
         super().__init__(parent)
         
         # Selection state
@@ -23,6 +23,7 @@ class ROISelectorOverlay(QDialog):
         self.start_point = QPoint()
         self.end_point = QPoint()
         self.selection_rect = QRect()
+        self.monitor_bounds = monitor_bounds  # Restrict to specific monitor if provided
         
         # UI setup
         # Use flags that work well on Windows
@@ -38,8 +39,11 @@ class ROISelectorOverlay(QDialog):
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
         
-        # Cover all screens
-        self._setup_multi_monitor()
+        # Setup monitor coverage
+        if monitor_bounds:
+            self._setup_single_monitor(monitor_bounds)
+        else:
+            self._setup_multi_monitor()
         
     def _setup_multi_monitor(self):
         """Setup to cover all monitors"""
@@ -53,17 +57,22 @@ class ROISelectorOverlay(QDialog):
             
         self.setGeometry(total_rect)
         
+    def _setup_single_monitor(self, monitor_bounds):
+        """Setup to cover a single monitor"""
+        x = monitor_bounds['x']
+        y = monitor_bounds['y']
+        width = monitor_bounds['width']
+        height = monitor_bounds['height']
+        self.setGeometry(x, y, width, height)
+        
     def start_selection(self):
         """Start ROI selection"""
         print("DEBUG: ROI start_selection called")
         
-        # Ensure window covers full screen
-        desktop = QApplication.desktop()
-        screen_rect = desktop.screenGeometry()
-        self.setGeometry(screen_rect)
+        # Setup monitor coverage is already done in __init__
         
         # Show window using exec_ for modal dialog
-        print(f"DEBUG: Showing ROI window at {screen_rect}")
+        print(f"DEBUG: Showing ROI window")
         
         # Start with a slight delay to ensure proper display
         QTimer.singleShot(100, self._prepare_selection)
@@ -102,7 +111,20 @@ class ROISelectorOverlay(QDialog):
     def mouseMoveEvent(self, event):
         """Handle mouse move"""
         if self.selecting:
-            self.end_point = event.globalPos()
+            end_point = event.globalPos()
+            
+            # If monitor bounds are set, constrain the end point
+            if self.monitor_bounds:
+                min_x = self.monitor_bounds['x']
+                min_y = self.monitor_bounds['y']
+                max_x = min_x + self.monitor_bounds['width']
+                max_y = min_y + self.monitor_bounds['height']
+                
+                # Clamp the end point to monitor bounds
+                end_point.setX(max(min_x, min(end_point.x(), max_x)))
+                end_point.setY(max(min_y, min(end_point.y(), max_y)))
+            
+            self.end_point = end_point
             self.update()
             
     def mouseReleaseEvent(self, event):

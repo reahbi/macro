@@ -112,11 +112,6 @@ class MacroStepWidget(QFrame):
         layout = QHBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
         
-        # Selection checkbox
-        from PyQt5.QtWidgets import QCheckBox
-        self.select_cb = QCheckBox()
-        self.select_cb.toggled.connect(self._on_selection_changed)
-        layout.addWidget(self.select_cb)
         
         # Drag handle
         self.handle = QLabel("≡")
@@ -157,6 +152,11 @@ class MacroStepWidget(QFrame):
         self.enable_btn.setCheckable(True)
         self.enable_btn.setChecked(self.step.enabled)
         self.enable_btn.setText("✓" if self.step.enabled else "✗")
+        self.enable_btn.setToolTip(
+            "단계 활성화/비활성화\n"
+            "✓ 활성화: 매크로 실행 시 이 단계를 수행합니다\n"
+            "✗ 비활성화: 매크로 실행 시 이 단계를 건너뜁니다"
+        )
         self.enable_btn.toggled.connect(self._on_enable_toggled)
         layout.addWidget(self.enable_btn)
         
@@ -307,15 +307,7 @@ class MacroStepWidget(QFrame):
             base_color = "white"
             border_color = "#ddd"
             
-        if self.selected:
-            self.setStyleSheet(f"""
-                MacroStepWidget {{
-                    background-color: #e3f2fd;
-                    border: 2px solid #2196F3;
-                    border-radius: 5px;
-                }}
-            """)
-        elif self.step.enabled:
+        if self.step.enabled:
             self.setStyleSheet(f"""
                 MacroStepWidget {{
                     background-color: {base_color};
@@ -336,17 +328,6 @@ class MacroStepWidget(QFrame):
                 }}
             """)
             
-    def _on_selection_changed(self, checked: bool):
-        """Handle selection change"""
-        self.selected = checked
-        self._update_style()
-        self.selectionChanged.emit(self.step.step_id, checked)
-        
-    def set_selected(self, selected: bool):
-        """Set selection state"""
-        self.select_cb.setChecked(selected)
-        self.selected = selected
-        self._update_style()
             
     def mousePressEvent(self, event):
         """Handle mouse press for dragging"""

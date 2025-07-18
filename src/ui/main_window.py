@@ -231,8 +231,8 @@ class MainWindow(QMainWindow):
     def _on_macro_changed(self, macro):
         """Handle macro change"""
         excel_manager = self.excel_widget.get_excel_manager()
-        if excel_manager._current_data:
-            self.execution_widget.set_macro_and_excel(macro, excel_manager)
+        # Always update macro, even without Excel
+        self.execution_widget.set_macro_and_excel(macro, excel_manager)
             
     def save_macro(self):
         """Save current macro to file"""

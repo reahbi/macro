@@ -16,7 +16,12 @@ sys.path.insert(0, str(src_path))
 sys.path.insert(0, str(project_root))
 
 # 환경 변수 설정
-os.environ['QT_QPA_PLATFORM'] = 'xcb'
+if sys.platform == 'win32':
+    os.environ['QT_QPA_PLATFORM'] = 'windows'
+elif sys.platform.startswith('linux'):
+    os.environ['QT_QPA_PLATFORM'] = 'xcb'
+    if 'DISPLAY' not in os.environ:
+        os.environ['DISPLAY'] = ':0'
 
 print("Excel Macro Automation 시작...")
 

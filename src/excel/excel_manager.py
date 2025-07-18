@@ -21,6 +21,11 @@ class ExcelManager:
         self._current_file: Optional[str] = None
         self._current_data: Optional[ExcelData] = None
         self._column_mappings: Dict[str, ColumnMapping] = {}
+    
+    @property
+    def file_path(self) -> Optional[str]:
+        """Get current file path"""
+        return self._current_file
         
     def load_file(self, file_path: str) -> ExcelFileInfo:
         """Load Excel file and return file information"""
@@ -108,13 +113,17 @@ class ExcelManager:
         try:
             pd.to_numeric(series)
             return ColumnType.NUMBER
-        except:
+        except (ValueError, TypeError):
             pass
         
         try:
-            pd.to_datetime(series)
+            # Suppress warning for mixed date formats
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='Could not infer format')
+                pd.to_datetime(series, errors='coerce')
             return ColumnType.DATE
-        except:
+        except (ValueError, TypeError, AttributeError):
             pass
         
         # Check for boolean
@@ -158,7 +167,9 @@ class ExcelManager:
     def save_file(self, file_path: Optional[str] = None) -> str:
         """Save current data back to Excel"""
         if not self._current_data:
-            raise ValueError("No data to save")
+            # Excel 데이터가 없으면 저장하지 않음 (standalone 모드)
+            self.logger.info("No Excel data to save - skipping save operation")
+            return ""
         
         save_path = file_path or self._current_file
         

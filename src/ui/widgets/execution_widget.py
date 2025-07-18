@@ -308,15 +308,18 @@ class ExecutionWidget(QWidget):
         self.engine.executionFinished.connect(self._on_execution_finished)
         self.engine.error.connect(self._on_error)
         
-    def set_macro_and_excel(self, macro: Macro, excel_manager: ExcelManager):
+    def set_macro_and_excel(self, macro: Macro, excel_manager: Optional[ExcelManager] = None):
         """Set macro and Excel manager"""
         self.current_macro = macro
         self.excel_manager = excel_manager
         
+        # Show/hide Excel-specific controls
+        self.incomplete_only_checkbox.setVisible(excel_manager is not None)
+        
     def start_execution(self):
         """Start macro execution"""
-        if not self.current_macro or not self.excel_manager:
-            self.logger.warning("No macro or Excel data loaded")
+        if not self.current_macro:
+            self.logger.warning("No macro loaded")
             return
             
         # Reset statistics
@@ -329,14 +332,18 @@ class ExecutionWidget(QWidget):
         # Configure engine
         self.engine.set_macro(self.current_macro, self.excel_manager)
         
-        # Set target rows based on checkbox
-        if self.incomplete_only_checkbox.isChecked():
-            # Let engine use default (incomplete rows)
-            self.engine.set_target_rows([])
+        # Set target rows based on Excel availability
+        if self.excel_manager:
+            if self.incomplete_only_checkbox.isChecked():
+                # Let engine use default (incomplete rows)
+                self.engine.set_target_rows([])
+            else:
+                # Execute all rows
+                total_rows = len(self.excel_manager._current_data.dataframe)
+                self.engine.set_target_rows(list(range(total_rows)))
         else:
-            # Execute all rows
-            total_rows = len(self.excel_manager._current_data.dataframe)
-            self.engine.set_target_rows(list(range(total_rows)))
+            # No Excel - standalone mode
+            self.engine.set_target_rows([])
             
         # Start execution
         self.engine.start()
@@ -412,7 +419,8 @@ class ExecutionWidget(QWidget):
     def _update_elapsed_time(self):
         """Update elapsed time display"""
         if self.start_time:
-            elapsed = self.start_time.secsTo(QTimer.currentTime())
+            from PyQt5.QtCore import QTime
+            elapsed = self.start_time.secsTo(QTime.currentTime())
             total = self.completed_count + self.failed_count
             self.status_widget.update_statistics(
                 total, self.completed_count, self.failed_count, elapsed

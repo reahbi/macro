@@ -14,7 +14,9 @@ from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor
 from core.macro_types import TextSearchStep
 from ui.widgets.roi_selector import ROISelectorOverlay
 from vision.text_extractor import TextExtractor
+from utils.monitor_utils import get_monitor_info
 import pyautogui
+import mss
 
 class TextSearchStepDialog(QDialog):
     """Dialog for configuring text search steps"""
@@ -26,6 +28,7 @@ class TextSearchStepDialog(QDialog):
         self.excel_columns = excel_columns or []
         self.region = self.step.region
         self.text_extractor = TextExtractor()
+        self.monitors = get_monitor_info()  # Get monitor information
         self.setWindowTitle("텍스트 검색 단계 설정")
         self.setModal(True)
         self.setMinimumWidth(500)
@@ -104,17 +107,32 @@ class TextSearchStepDialog(QDialog):
         region_group = QGroupBox("검색 영역")
         region_layout = QVBoxLayout()
         
+        # Search scope selection
+        scope_layout = QHBoxLayout()
+        scope_layout.addWidget(QLabel("검색 범위:"))
+        
+        self.search_scope_combo = QComboBox()
+        # Dynamically add monitor options
+        self._populate_monitor_options()
+        self.search_scope_combo.currentIndexChanged.connect(self._on_search_scope_changed)
+        scope_layout.addWidget(self.search_scope_combo)
+        scope_layout.addStretch()
+        region_layout.addLayout(scope_layout)
+        
         # Region display
-        self.region_label = QLabel("전체 화면")
+        self.region_label = QLabel("전체 화면 (모든 모니터)")
         if self.region:
             self.region_label.setText(
                 f"영역: ({self.region[0]}, {self.region[1]}) "
                 f"크기: {self.region[2]}x{self.region[3]}"
             )
+            self.search_scope_combo.setCurrentIndex(2)  # Set to "특정 영역 선택"
         region_layout.addWidget(self.region_label)
         
         # Region buttons
+        self.region_buttons_widget = QWidget()
         region_btn_layout = QHBoxLayout()
+        region_btn_layout.setContentsMargins(0, 0, 0, 0)
         
         self.select_region_btn = QPushButton("영역 선택")
         self.select_region_btn.clicked.connect(self._select_region)
@@ -128,7 +146,10 @@ class TextSearchStepDialog(QDialog):
         self.preview_region_btn.clicked.connect(self._preview_region)
         region_btn_layout.addWidget(self.preview_region_btn)
         
-        region_layout.addLayout(region_btn_layout)
+        self.region_buttons_widget.setLayout(region_btn_layout)
+        self.region_buttons_widget.setVisible(False)  # Hidden by default
+        
+        region_layout.addWidget(self.region_buttons_widget)
         region_group.setLayout(region_layout)
         layout.addWidget(region_group)
         
@@ -233,6 +254,26 @@ class TextSearchStepDialog(QDialog):
             self.fixed_text_radio.setChecked(True)
             self.search_text_edit.setText(self.step.search_text)
         
+        # Set search scope based on region
+        if self.region:
+            # Check if region matches any monitor exactly
+            matched_monitor_index = None
+            for i, monitor in enumerate(self.monitors):
+                if (self.region[0] == monitor['x'] and
+                    self.region[1] == monitor['y'] and
+                    self.region[2] == monitor['width'] and
+                    self.region[3] == monitor['height']):
+                    matched_monitor_index = i + 1  # +1 because index 0 is "전체 화면"
+                    break
+            
+            if matched_monitor_index:
+                self.search_scope_combo.setCurrentIndex(matched_monitor_index)
+            else:
+                # Custom region
+                self.search_scope_combo.setCurrentIndex(len(self.monitors) + 1)  # Last option
+        else:
+            self.search_scope_combo.setCurrentIndex(0)  # 전체 화면
+        
         # Set options
         self.exact_match_check.setChecked(self.step.exact_match)
         self.confidence_spin.setValue(self.step.confidence)
@@ -246,17 +287,86 @@ class TextSearchStepDialog(QDialog):
         
     def _select_region(self):
         """Select screen region"""
-        # Hide dialog temporarily
-        self.hide()
-        # Give time for dialog to hide before showing ROI selector
-        QTimer.singleShot(200, self._show_region_selector)
+        # First, show monitor selection dialog
+        monitor_dialog = QDialog(self)
+        monitor_dialog.setWindowTitle("모니터 선택")
+        monitor_dialog.setModal(True)
+        
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("영역을 선택할 모니터를 선택하세요:"))
+        
+        # Monitor list widget
+        monitor_list = QComboBox()
+        for i, monitor in enumerate(self.monitors):
+            if monitor['is_primary']:
+                name = f"주 모니터 ({monitor['width']}x{monitor['height']})"
+            else:
+                # Determine position-based name - check Y axis first
+                x_offset_threshold = 300
+                
+                if monitor['y'] < -100:  # Above primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        pos_name = "위쪽"
+                    elif monitor['x'] < -x_offset_threshold:
+                        pos_name = "왼쪽 위"
+                    else:
+                        pos_name = "오른쪽 위"
+                elif monitor['y'] > 100:  # Below primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        pos_name = "아래쪽"
+                    elif monitor['x'] < -x_offset_threshold:
+                        pos_name = "왼쪽 아래"
+                    else:
+                        pos_name = "오른쪽 아래"
+                elif monitor['x'] < -100:  # Left of primary monitor
+                    pos_name = "왼쪽"
+                elif monitor['x'] > 100:  # Right of primary monitor
+                    pos_name = "오른쪽"
+                else:
+                    pos_name = "보조"
+                name = f"{pos_name} 모니터 ({monitor['width']}x{monitor['height']})"
+            monitor_list.addItem(name)
+        
+        layout.addWidget(monitor_list)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        ok_button = QPushButton("확인")
+        cancel_button = QPushButton("취소")
+        button_layout.addWidget(ok_button)
+        button_layout.addWidget(cancel_button)
+        layout.addLayout(button_layout)
+        
+        monitor_dialog.setLayout(layout)
+        
+        # Store selected monitor
+        selected_monitor = [None]
+        
+        def on_ok():
+            selected_monitor[0] = self.monitors[monitor_list.currentIndex()]
+            monitor_dialog.accept()
+            
+        def on_cancel():
+            monitor_dialog.reject()
+            
+        ok_button.clicked.connect(on_ok)
+        cancel_button.clicked.connect(on_cancel)
+        
+        if monitor_dialog.exec_() == QDialog.Accepted and selected_monitor[0]:
+            # Hide dialog temporarily
+            self.hide()
+            # Store selected monitor bounds
+            self._selected_monitor_bounds = selected_monitor[0]
+            # Give time for dialog to hide before showing ROI selector
+            QTimer.singleShot(200, self._show_region_selector)
         
     def _show_region_selector(self):
         """Show region selector overlay"""
         try:
             print("DEBUG: Creating ROI selector")
-            # Create ROI selector as a top-level window
-            self.roi_selector = ROISelectorOverlay(parent=None)
+            # Create ROI selector with monitor bounds if available
+            monitor_bounds = getattr(self, '_selected_monitor_bounds', None)
+            self.roi_selector = ROISelectorOverlay(parent=None, monitor_bounds=monitor_bounds)
             self.roi_selector.selectionComplete.connect(self._on_region_selected)
             self.roi_selector.selectionCancelled.connect(lambda: self.show())
             print("DEBUG: Starting ROI selection")
@@ -304,7 +414,9 @@ class TextSearchStepDialog(QDialog):
     def _clear_region(self):
         """Clear selected region"""
         self.region = None
-        self.region_label.setText("전체 화면")
+        self.region_label.setText("영역을 선택하세요")
+        # Keep the scope combo at "특정 영역 선택"
+        self.search_scope_combo.setCurrentIndex(2)
         
     def _preview_region(self):
         """Preview selected region"""
@@ -338,9 +450,10 @@ class TextSearchStepDialog(QDialog):
             
             label = QLabel()
             # Scale pixmap if too large
-            if pixmap.width() > 800 or pixmap.height() > 600:
+            if not pixmap.isNull() and (pixmap.width() > 800 or pixmap.height() > 600):
                 pixmap = pixmap.scaled(800, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            label.setPixmap(pixmap)
+            if not pixmap.isNull():
+                label.setPixmap(pixmap)
             layout.addWidget(label)
             
             # Add region info
@@ -355,6 +468,100 @@ class TextSearchStepDialog(QDialog):
             import traceback
             traceback.print_exc()
             QMessageBox.warning(self, "오류", f"미리보기 생성 중 오류가 발생했습니다:\n{str(e)}")
+            
+    def _populate_monitor_options(self):
+        """Populate monitor options in combo box"""
+        options = ["전체 화면 (모든 모니터)"]
+        
+        # Add each monitor as an option
+        for i, monitor in enumerate(self.monitors):
+            if monitor['is_primary']:
+                name = f"주 모니터 ({monitor['width']}x{monitor['height']})"
+            else:
+                # Determine position-based name - check Y axis first
+                # Consider small X offsets (< 300px) as vertically aligned
+                x_offset_threshold = 300
+                
+                if monitor['y'] < -100:  # Above primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        pos_name = "위쪽"
+                    elif monitor['x'] < -x_offset_threshold:
+                        pos_name = "왼쪽 위"
+                    else:
+                        pos_name = "오른쪽 위"
+                elif monitor['y'] > 100:  # Below primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        pos_name = "아래쪽"
+                    elif monitor['x'] < -x_offset_threshold:
+                        pos_name = "왼쪽 아래"
+                    else:
+                        pos_name = "오른쪽 아래"
+                elif monitor['x'] < -100:  # Left of primary monitor
+                    pos_name = "왼쪽"
+                elif monitor['x'] > 100:  # Right of primary monitor
+                    pos_name = "오른쪽"
+                else:
+                    pos_name = "보조"
+                name = f"{pos_name} 모니터 ({monitor['width']}x{monitor['height']})"
+            options.append(name)
+        
+        # Add custom region selection at the end
+        options.append("특정 영역 선택")
+        
+        self.search_scope_combo.addItems(options)
+        
+    def _on_search_scope_changed(self, index):
+        """Handle search scope change"""
+        if index == 0:  # 전체 화면 (모든 모니터)
+            self.region = None
+            self.region_label.setText("전체 화면 (모든 모니터)")
+            self.region_buttons_widget.setVisible(False)
+        elif index > 0 and index <= len(self.monitors):  # Specific monitor
+            # Get the selected monitor
+            monitor = self.monitors[index - 1]
+            self.region = (
+                monitor['x'], 
+                monitor['y'],
+                monitor['width'],
+                monitor['height']
+            )
+            # Create display text
+            if monitor['is_primary']:
+                monitor_name = "주 모니터"
+            else:
+                # Use position-based name - check Y axis first
+                x_offset_threshold = 300
+                
+                if monitor['y'] < -100:  # Above primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        monitor_name = "위쪽 모니터"
+                    elif monitor['x'] < -x_offset_threshold:
+                        monitor_name = "왼쪽 위 모니터"
+                    else:
+                        monitor_name = "오른쪽 위 모니터"
+                elif monitor['y'] > 100:  # Below primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        monitor_name = "아래쪽 모니터"
+                    elif monitor['x'] < -x_offset_threshold:
+                        monitor_name = "왼쪽 아래 모니터"
+                    else:
+                        monitor_name = "오른쪽 아래 모니터"
+                elif monitor['x'] < -100:  # Left of primary monitor
+                    monitor_name = "왼쪽 모니터"
+                elif monitor['x'] > 100:  # Right of primary monitor
+                    monitor_name = "오른쪽 모니터"
+                else:
+                    monitor_name = "보조 모니터"
+            
+            self.region_label.setText(
+                f"{monitor_name}: ({monitor['x']}, {monitor['y']}) "
+                f"크기: {monitor['width']}x{monitor['height']}"
+            )
+            self.region_buttons_widget.setVisible(False)
+        else:  # 특정 영역 선택
+            if not self.region:
+                self.region_label.setText("영역을 선택하세요")
+            self.region_buttons_widget.setVisible(True)
         
     def _test_search(self):
         """Test text search"""

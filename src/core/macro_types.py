@@ -113,8 +113,8 @@ class MouseClickStep(MacroStep):
     
     def validate(self) -> List[str]:
         errors = []
-        if self.x < 0 or self.y < 0:
-            errors.append("Coordinates must be non-negative")
+        # Allow negative coordinates for multi-monitor setups
+        # No validation needed for x and y coordinates
         if self.clicks < 1:
             errors.append("Click count must be at least 1")
         if self.interval < 0:
@@ -161,8 +161,8 @@ class MouseMoveStep(MacroStep):
     
     def validate(self) -> List[str]:
         errors = []
-        if self.x < 0 or self.y < 0:
-            errors.append("Coordinates must be non-negative")
+        # Allow negative coordinates for multi-monitor setups
+        # No validation needed for x and y coordinates
         if self.duration < 0:
             errors.append("Duration must be non-negative")
         return errors

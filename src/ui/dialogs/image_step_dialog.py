@@ -7,16 +7,17 @@ from typing import Optional, Dict, Any, Tuple
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QSpinBox, QDoubleSpinBox, QGroupBox, QFileDialog,
-    QDialogButtonBox, QMessageBox, QCheckBox, QComboBox
+    QDialogButtonBox, QMessageBox, QCheckBox, QComboBox, QWidget
 )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QPixmap, QImage, QKeySequence
 from PyQt5.QtWidgets import QShortcut
 from core.macro_types import MacroStep, WaitImageStep, StepType
 from vision.image_matcher import ImageMatcher
 from config.settings import Settings
-from ui.widgets.roi_selector import ROISelectorWidget
+from ui.widgets.roi_selector import ROISelectorOverlay
 from utils.clipboard_utils import save_clipboard_image
+from utils.monitor_utils import get_monitor_info
 
 class ImageStepDialog(QDialog):
     """Base dialog for image step configuration"""
@@ -28,11 +29,16 @@ class ImageStepDialog(QDialog):
         self.step = step
         self.settings = settings or Settings()
         self.image_matcher = ImageMatcher(self.settings)
+        self.monitors = get_monitor_info()  # Get monitor information
+        self.region = None  # Selected region
         
         # Step data
         self.step_data: Dict[str, Any] = {}
         if step:
             self.step_data = step.to_dict()
+            # Load region from step if available
+            if hasattr(step, 'region'):
+                self.region = step.region
             
         self.init_ui()
         self.load_step_data()
@@ -109,26 +115,49 @@ class ImageStepDialog(QDialog):
         image_group.setLayout(image_layout)
         layout.addWidget(image_group)
         
-        # ROI selection group
-        roi_group = QGroupBox("검색 영역 (선택사항)")
-        roi_layout = QVBoxLayout()
+        # Search region configuration
+        region_group = QGroupBox("검색 영역")
+        region_layout = QVBoxLayout()
         
-        # ROI selector widget
-        self.roi_selector = ROISelectorWidget()
-        roi_layout.addWidget(self.roi_selector)
+        # Search scope selection
+        scope_layout = QHBoxLayout()
+        scope_layout.addWidget(QLabel("검색 범위:"))
         
-        # Select region button
-        self.select_region_btn = QPushButton("화면 영역 선택")
+        self.search_scope_combo = QComboBox()
+        # Dynamically add monitor options
+        self._populate_monitor_options()
+        self.search_scope_combo.currentIndexChanged.connect(self._on_search_scope_changed)
+        scope_layout.addWidget(self.search_scope_combo)
+        scope_layout.addStretch()
+        region_layout.addLayout(scope_layout)
+        
+        # Region display
+        self.region_label = QLabel("전체 화면 (모든 모니터)")
+        region_layout.addWidget(self.region_label)
+        
+        # Region buttons (only visible for custom region selection)
+        self.region_buttons_widget = QWidget()
+        region_btn_layout = QHBoxLayout()
+        region_btn_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.select_region_btn = QPushButton("영역 선택")
         self.select_region_btn.clicked.connect(self._select_region)
-        roi_layout.addWidget(self.select_region_btn)
+        region_btn_layout.addWidget(self.select_region_btn)
         
-        # Clear region button
         self.clear_region_btn = QPushButton("영역 초기화")
         self.clear_region_btn.clicked.connect(self._clear_region)
-        roi_layout.addWidget(self.clear_region_btn)
+        region_btn_layout.addWidget(self.clear_region_btn)
         
-        roi_group.setLayout(roi_layout)
-        layout.addWidget(roi_group)
+        self.preview_region_btn = QPushButton("영역 미리보기")
+        self.preview_region_btn.clicked.connect(self._preview_region)
+        region_btn_layout.addWidget(self.preview_region_btn)
+        
+        self.region_buttons_widget.setLayout(region_btn_layout)
+        self.region_buttons_widget.setVisible(False)  # Hidden by default
+        
+        region_layout.addWidget(self.region_buttons_widget)
+        region_group.setLayout(region_layout)
+        layout.addWidget(region_group)
         
         # Additional controls (implemented by subclasses)
         self.add_custom_controls(layout)
@@ -150,6 +179,99 @@ class ImageStepDialog(QDialog):
     def add_custom_controls(self, layout: QVBoxLayout):
         """Override to add step-specific controls"""
         pass
+        
+    def _populate_monitor_options(self):
+        """Populate monitor options in combo box"""
+        options = ["전체 화면 (모든 모니터)"]
+        
+        # Add each monitor as an option
+        for i, monitor in enumerate(self.monitors):
+            if monitor['is_primary']:
+                name = f"주 모니터 ({monitor['width']}x{monitor['height']})"
+            else:
+                # Determine position-based name - check Y axis first
+                x_offset_threshold = 300
+                
+                if monitor['y'] < -100:  # Above primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        pos_name = "위쪽"
+                    elif monitor['x'] < -x_offset_threshold:
+                        pos_name = "왼쪽 위"
+                    else:
+                        pos_name = "오른쪽 위"
+                elif monitor['y'] > 100:  # Below primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        pos_name = "아래쪽"
+                    elif monitor['x'] < -x_offset_threshold:
+                        pos_name = "왼쪽 아래"
+                    else:
+                        pos_name = "오른쪽 아래"
+                elif monitor['x'] < -100:  # Left of primary monitor
+                    pos_name = "왼쪽"
+                elif monitor['x'] > 100:  # Right of primary monitor
+                    pos_name = "오른쪽"
+                else:
+                    pos_name = "보조"
+                name = f"{pos_name} 모니터 ({monitor['width']}x{monitor['height']})"
+            options.append(name)
+        
+        # Add custom region selection at the end
+        options.append("특정 영역 선택")
+        
+        self.search_scope_combo.addItems(options)
+        
+    def _on_search_scope_changed(self, index):
+        """Handle search scope change"""
+        if index == 0:  # 전체 화면 (모든 모니터)
+            self.region = None
+            self.region_label.setText("전체 화면 (모든 모니터)")
+            self.region_buttons_widget.setVisible(False)
+        elif index > 0 and index <= len(self.monitors):  # Specific monitor
+            # Get the selected monitor
+            monitor = self.monitors[index - 1]
+            self.region = (
+                monitor['x'], 
+                monitor['y'],
+                monitor['width'],
+                monitor['height']
+            )
+            # Create display text
+            if monitor['is_primary']:
+                monitor_name = "주 모니터"
+            else:
+                # Use position-based name - check Y axis first
+                x_offset_threshold = 300
+                
+                if monitor['y'] < -100:  # Above primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        monitor_name = "위쪽 모니터"
+                    elif monitor['x'] < -x_offset_threshold:
+                        monitor_name = "왼쪽 위 모니터"
+                    else:
+                        monitor_name = "오른쪽 위 모니터"
+                elif monitor['y'] > 100:  # Below primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        monitor_name = "아래쪽 모니터"
+                    elif monitor['x'] < -x_offset_threshold:
+                        monitor_name = "왼쪽 아래 모니터"
+                    else:
+                        monitor_name = "오른쪽 아래 모니터"
+                elif monitor['x'] < -100:  # Left of primary monitor
+                    monitor_name = "왼쪽 모니터"
+                elif monitor['x'] > 100:  # Right of primary monitor
+                    monitor_name = "오른쪽 모니터"
+                else:
+                    monitor_name = "보조 모니터"
+            
+            self.region_label.setText(
+                f"{monitor_name}: ({monitor['x']}, {monitor['y']}) "
+                f"크기: {monitor['width']}x{monitor['height']}"
+            )
+            self.region_buttons_widget.setVisible(False)
+        else:  # 특정 영역 선택
+            if not self.region:
+                self.region_label.setText("영역을 선택하세요")
+            self.region_buttons_widget.setVisible(True)
         
     def _browse_image(self):
         """Browse for image file"""
@@ -187,50 +309,15 @@ class ImageStepDialog(QDialog):
                 "캡처 후 '붙여넣기' 버튼을 클릭하세요."
             )
         else:
-            # Try the old method with simple selector
-            self.hide()
-            
-            try:
-                # Use simple ROI selector
-                from ui.widgets.simple_roi_selector import SimpleROISelector
-                selector = SimpleROISelector()
-                
-                def on_selection(region):
-                    # Capture the selected region
-                    import time
-                    import pyautogui
-                    timestamp = time.strftime("%Y%m%d_%H%M%S")
-                    filename = f"capture_{timestamp}.png"
-                    
-                    # Create captures directory if needed
-                    captures_dir = os.path.join(os.path.dirname(__file__), "../../../captures")
-                    os.makedirs(captures_dir, exist_ok=True)
-                    
-                    file_path = os.path.join(captures_dir, filename)
-                    
-                    # Capture using pyautogui
-                    x, y, w, h = region
-                    screenshot = pyautogui.screenshot(region=(x, y, w, h))
-                    screenshot.save(file_path)
-                    
-                    # Update UI
-                    self.image_path_input.setText(file_path)
-                    # Delay preview update
-                    from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(50, self._update_preview)
-                    self.show()
-                    
-                selector.selectionComplete.connect(on_selection)
-                selector.selectionCancelled.connect(lambda: self.show())
-                
-                # Small delay to ensure dialog is hidden
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(100, selector.start_selection)
-                
-            except Exception as e:
-                print(f"Simple selector error in capture: {e}")
-                self.show()
-                QMessageBox.warning(self, "오류", "화면 캡처 중 오류가 발생했습니다.")
+            # Just show the same instruction for consistency
+            QMessageBox.information(
+                self,
+                "안내",
+                "Windows 화면 캡처를 사용하세요:\n\n"
+                "1. Shift + Win + S 를 눌러서 화면을 캡처\n"
+                "2. 캡처할 영역을 선택\n"
+                "3. '붙여넣기' 버튼을 클릭하여 이미지 추가"
+            )
         
     def _paste_from_clipboard(self):
         """Paste image from clipboard"""
@@ -289,18 +376,86 @@ class ImageStepDialog(QDialog):
             
     def _select_region(self):
         """Start region selection"""
-        # Hide dialog temporarily
-        self.hide()
-        # Give time for dialog to hide before showing ROI selector
-        from PyQt5.QtCore import QTimer
-        QTimer.singleShot(200, self._show_region_selector)
+        # First, show monitor selection dialog
+        monitor_dialog = QDialog(self)
+        monitor_dialog.setWindowTitle("모니터 선택")
+        monitor_dialog.setModal(True)
+        
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("영역을 선택할 모니터를 선택하세요:"))
+        
+        # Monitor list widget
+        monitor_list = QComboBox()
+        for i, monitor in enumerate(self.monitors):
+            if monitor['is_primary']:
+                name = f"주 모니터 ({monitor['width']}x{monitor['height']})"
+            else:
+                # Determine position-based name - check Y axis first
+                x_offset_threshold = 300
+                
+                if monitor['y'] < -100:  # Above primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        pos_name = "위쪽"
+                    elif monitor['x'] < -x_offset_threshold:
+                        pos_name = "왼쪽 위"
+                    else:
+                        pos_name = "오른쪽 위"
+                elif monitor['y'] > 100:  # Below primary monitor
+                    if abs(monitor['x']) < x_offset_threshold:
+                        pos_name = "아래쪽"
+                    elif monitor['x'] < -x_offset_threshold:
+                        pos_name = "왼쪽 아래"
+                    else:
+                        pos_name = "오른쪽 아래"
+                elif monitor['x'] < -100:  # Left of primary monitor
+                    pos_name = "왼쪽"
+                elif monitor['x'] > 100:  # Right of primary monitor
+                    pos_name = "오른쪽"
+                else:
+                    pos_name = "보조"
+                name = f"{pos_name} 모니터 ({monitor['width']}x{monitor['height']})"
+            monitor_list.addItem(name)
+        
+        layout.addWidget(monitor_list)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        ok_button = QPushButton("확인")
+        cancel_button = QPushButton("취소")
+        button_layout.addWidget(ok_button)
+        button_layout.addWidget(cancel_button)
+        layout.addLayout(button_layout)
+        
+        monitor_dialog.setLayout(layout)
+        
+        # Store selected monitor
+        selected_monitor = [None]
+        
+        def on_ok():
+            selected_monitor[0] = self.monitors[monitor_list.currentIndex()]
+            monitor_dialog.accept()
+            
+        def on_cancel():
+            monitor_dialog.reject()
+            
+        ok_button.clicked.connect(on_ok)
+        cancel_button.clicked.connect(on_cancel)
+        
+        if monitor_dialog.exec_() == QDialog.Accepted and selected_monitor[0]:
+            # Hide dialog temporarily
+            self.hide()
+            # Store selected monitor bounds
+            self._selected_monitor_bounds = selected_monitor[0]
+            # Give time for dialog to hide before showing ROI selector
+            QTimer.singleShot(200, self._show_region_selector)
         
     def _show_region_selector(self):
         """Show region selector overlay"""
         # Try simple selector first (better for WSL)
         try:
-            from ui.widgets.simple_roi_selector import SimpleROISelector
-            selector = SimpleROISelector()
+            # Create ROI selector with monitor bounds if available
+            monitor_bounds = getattr(self, '_selected_monitor_bounds', None)
+            selector = ROISelectorOverlay(parent=None, monitor_bounds=monitor_bounds)
             
             def on_selection_complete(region):
                 try:
@@ -309,11 +464,16 @@ class ImageStepDialog(QDialog):
                     if region and len(region) == 4:
                         # Convert all values to integers to avoid any type issues
                         formatted_region = tuple(int(x) for x in region)
-                        self.roi_selector.set_region(formatted_region)
-                        print(f"DEBUG: set_region successful with formatted region: {formatted_region}")
+                        self.region = formatted_region
+                        self.region_label.setText(
+                            f"선택된 영역: ({formatted_region[0]}, {formatted_region[1]}) "
+                            f"크기: {formatted_region[2]}x{formatted_region[3]}"
+                        )
+                        print(f"DEBUG: set region successful with formatted region: {formatted_region}")
                     else:
                         print(f"DEBUG: Invalid region format: {region}")
-                        self.roi_selector.set_region(None)
+                        self.region = None
+                        self.region_label.setText("영역을 선택하세요")
                     
                     # Show dialog and ensure it stays visible
                     self.setVisible(True)
@@ -356,77 +516,73 @@ class ImageStepDialog(QDialog):
             selector.selectionComplete.connect(on_selection_complete)
             selector.selectionCancelled.connect(on_selection_cancelled)
             
-            # Small delay to ensure dialog is hidden
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(100, selector.start_selection)
+            # Start selection
+            selector.start_selection()
             
         except Exception as e:
-            print(f"Simple selector error: {e}")
-            # Fallback to original overlay selector
-            from ui.widgets.roi_selector import ROISelectorOverlay
-            overlay = ROISelectorOverlay()
-            
-            def on_selection_complete(region):
-                try:
-                    print(f"DEBUG: Overlay ROI selection complete with region: {region}, type: {type(region)}")
-                    # Ensure region is properly formatted
-                    if region and len(region) == 4:
-                        # Convert all values to integers to avoid any type issues
-                        formatted_region = tuple(int(x) for x in region)
-                        self.roi_selector.set_region(formatted_region)
-                        print(f"DEBUG: overlay set_region successful with formatted region: {formatted_region}")
-                    else:
-                        print(f"DEBUG: Invalid overlay region format: {region}")
-                        self.roi_selector.set_region(None)
-                    
-                    # Show dialog and ensure it stays visible
-                    self.setVisible(True)
-                    self.show()
-                    self.raise_()
-                    self.activateWindow()
-                    print(f"DEBUG: overlay dialog.show() successful")
-                    
-                    # Force dialog to process events
-                    from PyQt5.QtWidgets import QApplication
-                    QApplication.processEvents()
-                    
-                    # Delay overlay cleanup to ensure dialog is fully shown
-                    from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(1000, overlay.deleteLater)
-                except Exception as e:
-                    print(f"DEBUG: Error in overlay on_selection_complete: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Still try to show the dialog
-                    self.setVisible(True)
-                    self.show()
-                    self.raise_()
-                    self.activateWindow()
-                    from PyQt5.QtWidgets import QApplication
-                    QApplication.processEvents()
-                    from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(1000, overlay.deleteLater)
-                
-            def on_selection_cancelled():
-                self.setVisible(True)
-                self.show()
-                self.raise_()
-                self.activateWindow()
-                from PyQt5.QtWidgets import QApplication
-                QApplication.processEvents()
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(1000, overlay.deleteLater)
-                
-            overlay.selectionComplete.connect(on_selection_complete)
-            overlay.selectionCancelled.connect(on_selection_cancelled)
-            
-            # Small delay to ensure dialog is hidden
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(100, overlay.start_selection)
+            print(f"Selector error: {e}")
+            import traceback
+            traceback.print_exc()
+            self.show()
+            QMessageBox.warning(self, "오류", "영역 선택 중 오류가 발생했습니다.")
         
     def _clear_region(self):
         """Clear selected region"""
-        self.roi_selector.set_region(None)
+        self.region = None
+        self.region_label.setText("영역을 선택하세요")
+        # Keep the scope combo at "특정 영역 선택"
+        self.search_scope_combo.setCurrentIndex(len(self.monitors) + 1)
+        
+    def _preview_region(self):
+        """Preview selected region"""
+        if not self.region:
+            QMessageBox.information(self, "알림", "선택된 영역이 없습니다.")
+            return
+            
+        try:
+            # Take screenshot of region
+            import pyautogui
+            x, y, width, height = self.region
+            screenshot = pyautogui.screenshot(region=(x, y, width, height))
+            
+            # Convert to QPixmap
+            import io
+            bytes_io = io.BytesIO()
+            screenshot.save(bytes_io, format='PNG')
+            bytes_io.seek(0)
+            
+            pixmap = QPixmap()
+            pixmap.loadFromData(bytes_io.read())
+            
+            if pixmap.isNull():
+                QMessageBox.warning(self, "경고", "영역 미리보기를 생성할 수 없습니다.")
+                return
+            
+            # Create preview dialog
+            preview_dialog = QDialog(self)
+            preview_dialog.setWindowTitle("영역 미리보기")
+            layout = QVBoxLayout()
+            
+            label = QLabel()
+            # Scale pixmap if too large
+            if not pixmap.isNull() and (pixmap.width() > 800 or pixmap.height() > 600):
+                pixmap = pixmap.scaled(800, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            if not pixmap.isNull():
+                label.setPixmap(pixmap)
+            layout.addWidget(label)
+            
+            # Add region info
+            info_label = QLabel(f"영역: ({x}, {y}) - 크기: {width}x{height}")
+            layout.addWidget(info_label)
+            
+            preview_dialog.setLayout(layout)
+            preview_dialog.exec_()
+            
+        except Exception as e:
+            print(f"DEBUG: Error in preview: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.warning(self, "오류", f"미리보기 생성 중 오류가 발생했습니다:\n{str(e)}")
         
     def load_step_data(self):
         """Load data from existing step"""
@@ -440,14 +596,31 @@ class ImageStepDialog(QDialog):
                 
             # Load region if available
             if hasattr(self.step, 'region') and self.step.region:
-                self.roi_selector.set_region(self.step.region)
+                self.region = self.step.region
+                # Set search scope based on region
+                if self.region:
+                    # Check if region matches any monitor exactly
+                    matched_monitor_index = None
+                    for i, monitor in enumerate(self.monitors):
+                        if (self.region[0] == monitor['x'] and
+                            self.region[1] == monitor['y'] and
+                            self.region[2] == monitor['width'] and
+                            self.region[3] == monitor['height']):
+                            matched_monitor_index = i + 1  # +1 because index 0 is "전체 화면"
+                            break
+                    
+                    if matched_monitor_index:
+                        self.search_scope_combo.setCurrentIndex(matched_monitor_index)
+                    else:
+                        # Custom region
+                        self.search_scope_combo.setCurrentIndex(len(self.monitors) + 1)  # Last option
                 
     def get_step_data(self) -> Dict[str, Any]:
         """Get configured step data"""
         data = {
             'name': self.name_input.text(),
             'image_path': self.image_path_input.text(),
-            'region': self.roi_selector.get_region()
+            'region': self.region
         }
         
         # Add custom data from subclasses
@@ -553,7 +726,7 @@ class WaitImageStepDialog(ImageStepDialog):
         result = self.image_matcher.find_image(
             image_path,
             confidence=self.confidence_spin.value(),
-            region=self.roi_selector.get_region()
+            region=self.region
         )
         
         if result.found:
@@ -612,6 +785,18 @@ class ImageSearchStepDialog(ImageStepDialog):
         
         # Connect search all checkbox
         self.search_all_check.toggled.connect(self.max_results_spin.setEnabled)
+        
+        # Test button
+        test_layout = QHBoxLayout()
+        self.test_btn = QPushButton("테스트")
+        self.test_btn.clicked.connect(self._test_search)
+        test_layout.addWidget(self.test_btn)
+        test_layout.addStretch()
+        params_layout.addLayout(test_layout)
+        
+        # Test result label
+        self.test_result_label = QLabel()
+        params_layout.addWidget(self.test_result_label)
         
         params_group.setLayout(params_layout)
         layout.addWidget(params_group)
@@ -694,3 +879,93 @@ class ImageSearchStepDialog(ImageStepDialog):
                 
         if self.step and hasattr(self.step, 'double_click'):
             self.click_type_combo.setCurrentIndex(1 if self.step.double_click else 0)
+            
+    def _test_search(self):
+        """Test image search with current settings"""
+        image_path = self.image_path_input.text()
+        if not image_path or not os.path.exists(image_path):
+            self.test_result_label.setText("먼저 유효한 이미지를 선택하세요")
+            self.test_result_label.setStyleSheet("color: red;")
+            return
+            
+        # Hide dialog temporarily for testing
+        self.hide()
+        QTimer.singleShot(300, lambda: self._perform_test_search(image_path))
+        
+    def _perform_test_search(self, image_path: str):
+        """Perform the actual test search"""
+        try:
+            # Perform image search
+            result = self.image_matcher.find_image(
+                image_path,
+                confidence=self.confidence_spin.value(),
+                region=self.region
+            )
+            
+            if result.found:
+                # Show result
+                if self.click_after_find_check.isChecked():
+                    # Calculate click position
+                    click_x = result.center[0] + self.offset_x_spin.value()
+                    click_y = result.center[1] + self.offset_y_spin.value()
+                    
+                    message = (
+                        f"✓ 이미지를 찾았습니다!\n"
+                        f"위치: ({result.center[0]}, {result.center[1]})\n"
+                        f"클릭 위치: ({click_x}, {click_y})\n"
+                        f"신뢰도: {result.confidence:.2f}"
+                    )
+                else:
+                    message = (
+                        f"✓ 이미지를 찾았습니다!\n"
+                        f"위치: ({result.center[0]}, {result.center[1]})\n"
+                        f"신뢰도: {result.confidence:.2f}"
+                    )
+                
+                self.test_result_label.setText(message.replace('\n', ' '))
+                self.test_result_label.setStyleSheet("color: green;")
+                
+                # Highlight found image briefly
+                self._highlight_found_image(result)
+                
+            else:
+                self.test_result_label.setText(
+                    f"✗ 이미지를 찾을 수 없습니다 (최고 신뢰도: {result.confidence:.2f})"
+                )
+                self.test_result_label.setStyleSheet("color: red;")
+                
+                # Show message box with more info
+                QMessageBox.information(
+                    self, 
+                    "테스트 결과",
+                    f"이미지를 찾을 수 없습니다.\n\n"
+                    f"최고 신뢰도: {result.confidence:.2f}\n"
+                    f"설정된 신뢰도: {self.confidence_spin.value()}\n\n"
+                    f"팁:\n"
+                    f"- 신뢰도를 낮춰보세요 (현재: {self.confidence_spin.value()})\n"
+                    f"- 이미지가 화면에 표시되어 있는지 확인하세요\n"
+                    f"- 검색 영역이 올바른지 확인하세요"
+                )
+                
+        except Exception as e:
+            print(f"DEBUG: Error in test search: {e}")
+            import traceback
+            traceback.print_exc()
+            self.test_result_label.setText(f"오류: {str(e)}")
+            self.test_result_label.setStyleSheet("color: red;")
+            QMessageBox.critical(self, "오류", f"테스트 중 오류 발생:\n{str(e)}")
+        finally:
+            self.show()
+            
+    def _highlight_found_image(self, result):
+        """Briefly highlight the found image on screen"""
+        try:
+            import pyautogui
+            x, y = result.center
+            # Move mouse to the found location
+            pyautogui.moveTo(x, y, duration=0.5)
+            
+            # Optional: Draw a rectangle around the found area
+            # This would require a temporary overlay window
+        except Exception as e:
+            print(f"Error highlighting image: {e}")
