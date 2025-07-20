@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/unit/ -x --tb=short -q)"
+    ],
+    "deny": []
+  }
+}

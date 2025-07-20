@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-REM === Windows Run Script (WSL and Local Path Support) ===
+REM === Excel Macro Automation - C Drive Direct Run ===
 
 cls
 
@@ -9,82 +9,23 @@ echo Excel Macro Automation Tool
 echo ===============================
 echo.
 
-REM Check current path
+REM Set current path
 set "CURRENT_PATH=%~dp0"
 echo Execution Path: %CURRENT_PATH%
 
-REM Check if WSL path (contains \\wsl)
-echo %CURRENT_PATH% | find "\\wsl" >nul
-if %errorlevel%==0 (
-    echo WSL path detected. Copying to local folder...
-    goto :WSL_MODE
-) else (
-    echo Running from local path...
-    goto :LOCAL_MODE
-)
-
-:WSL_MODE
-REM === WSL Mode: Copy to temp folder and run ===
-set WORK_DIR=C:\temp\excel_macro
-echo Working Directory: %WORK_DIR%
-
-REM Delete existing folder
-if exist "%WORK_DIR%" (
-    echo Cleaning existing folder...
-    rd /s /q "%WORK_DIR%" 2>nul
-    timeout /t 1 /nobreak >nul
-)
-
-REM Create new folder
-mkdir "%WORK_DIR%" 2>nul
-if errorlevel 1 (
-    echo.
-    echo [ERROR] Cannot create working directory!
-    echo Administrator privileges may be required.
-    echo.
-    pause
-    exit /b
-)
-
-REM Copy files
-echo Copying files from WSL...
-echo This may take a moment...
-REM Use robocopy for better UNC path support
-robocopy "%CURRENT_PATH%." "%WORK_DIR%" /E /NFL /NDL /NJH /NJS /nc /ns /np
-if errorlevel 8 (
-    echo.
-    echo [ERROR] File copy failed!
-    echo Source: %CURRENT_PATH%
-    echo Target: %WORK_DIR%
-    echo.
-    echo Trying alternative copy method...
-    REM Try PowerShell as fallback
-    powershell -Command "Copy-Item -Path '%CURRENT_PATH%*' -Destination '%WORK_DIR%' -Recurse -Force" 2>nul
-    if errorlevel 1 (
-        echo [ERROR] Alternative copy also failed!
-        echo Please copy files manually to %WORK_DIR%
-        pause
-        exit /b
-    )
-)
-
-REM Change to working directory
-cd /d "%WORK_DIR%"
-echo Current Directory: %CD%
-goto :CHECK_PYTHON
-
-:LOCAL_MODE
-REM === Local Mode: Run from current location ===
+REM Change to project directory
 cd /d "%~dp0"
 if errorlevel 1 (
     echo.
-    echo [ERROR] Failed to change directory!
+    echo [ERROR] Failed to change to project directory!
     echo Path: %~dp0
     echo.
     pause
     exit /b
 )
+
 echo Current Directory: %CD%
+echo.
 
 :CHECK_PYTHON
 REM Check Python
@@ -135,10 +76,17 @@ if errorlevel 1 (
 
 REM Check for execution file
 echo.
-echo Checking execution file...
-if not exist "run_main_fixed.py" (
+echo Checking execution files...
+if exist "run_main.py" (
+    set "EXEC_FILE=run_main.py"
+    echo Using primary launcher: run_main.py
+) else if exist "run_main_fixed.py" (
+    set "EXEC_FILE=run_main_fixed.py"
+    echo Using fallback launcher: run_main_fixed.py
+) else (
     echo.
-    echo [ERROR] run_main_fixed.py not found!
+    echo [ERROR] No execution file found!
+    echo Looking for: run_main.py or run_main_fixed.py
     echo Current directory: %CD%
     echo.
     echo Directory contents:
@@ -155,7 +103,7 @@ echo Starting application...
 echo ===============================
 echo.
 
-python run_main_fixed.py
+python "%EXEC_FILE%"
 
 REM Check execution result
 set EXIT_CODE=%errorlevel%
@@ -177,16 +125,6 @@ echo.
 echo Press any key to close...
 pause >nul
 
-REM Cleanup option for WSL mode
-if defined WORK_DIR (
-    echo.
-    echo Clean up temporary folder? (Y/N)
-    set /p CLEANUP=Select: 
-    if /i "%CLEANUP%"=="Y" (
-        cd /d C:\
-        rd /s /q "%WORK_DIR%" 2>nul
-        echo Temporary folder cleaned.
-    )
-)
+REM No cleanup needed - running directly from project directory
 
 exit /b %EXIT_CODE%

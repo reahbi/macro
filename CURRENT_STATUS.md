@@ -3,13 +3,14 @@
 ## 🚀 실행 방법
 
 ```bash
-# 1. 가상환경 활성화
-source venv/bin/activate
+# 1. 간단 실행 (권장)
+RUN_SIMPLE.bat
 
-# 2. GUI 실행
-python run_gui.py
-# 또는
-./start_gui.sh
+# 2. 완전 설치 실행
+WINDOWS_RUN.bat
+
+# 3. Python 직접 실행
+python run_main.py
 ```
 
 ## ✅ 구현 완료된 기능

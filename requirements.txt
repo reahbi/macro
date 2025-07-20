@@ -23,10 +23,6 @@ easyocr>=1.7.0
 # Security
 cryptography>=3.4.0
 
-# Testing (optional)
-pytest>=6.2.0
-pytest-qt>=4.0.0
-
 # Development tools (optional)
 black>=21.0
 flake8>=3.9.0

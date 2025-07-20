@@ -1,3 +1,175 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## 클로드 코드에서의 MCP (Model Context Protocol) 설치 및 설정 가이드 
+
+### 공통 주의사항
+1. 현재 사용 환경을 확인할 것. 모르면 사용자에게 물어볼 것. 
+2. OS(윈도우,리눅스,맥) 및 환경들(파워셸,명령프롬프트등)을 파악해서 그에 맞게 세팅할 것. 모르면 사용자에게 물어볼 것.
+3. mcp-installer을 이용해 필요한 MCP들을 설치할 것 (user 스코프로 설치 및 적용할것)
+4. 특정 MCP 설치시, 바로 설치하지 말고, WebSearch 도구로 해당 MCP의 공식 사이트 확인하고 현재 OS 및 환경 매치하여, 공식 설치법부터 확인할 것
+5. 공식 사이트 확인 후에는 context7 MCP 존재하는 경우, context7으로 다시 한번 확인할 것
+6. MCP 설치 후, task를 통해 디버그 모드로 서브 에이전트 구동한 후, /mcp 를 통해 실제 작동여부를 반드시 확인할 것 
+7. 설정 시, API KEY 환경 변수 설정이 필요한 경우, 가상의 API 키로 디폴트로 설치 및 설정 후, 올바른 API 키 정보를 입력해야 함을 사용자에게 알릴 것
+8. 특정 서버가 구동중 상태여야만 정상 작동하는 MCP는 에러가 나도 재설치하지 말고, 정상 구동을 위한 조건을 사용자에게 알릴 것
+9. 현재 클로드 코드가 실행되는 환경
+10. 설치 요청 받은 MCP만 설치하면 됨. 혹시 이미 설치된 다른 MCP 에러 있어도, 그냥 둘 것
+
+### Windows에서의 주의사항
+1. 설정 파일 직접 세팅시, Windows 경로 구분자는 백슬래시(\)이며, JSON 내에서는 반드시 이스케이프 처리(\\\\)해야 함
+2. Node.js가 %PATH%에 등록되어 있는지, 버전이 최소 v18 이상인지 확인할 것
+3. npx -y 옵션을 추가하면 버전 호환성 문제를 줄일 수 있음
+
+### MCP 서버 설치 순서
+
+1. **기본 설치**: mcp-installer를 사용해 설치
+2. **설치 후 정상 설치 여부 확인**: claude mcp list으로 설치 목록 확인 후, task를 통해 디버그 모드로 서브 에이전트 구동하여 /mcp로 작동여부 확인
+3. **문제 시 직접 설치**: User 스코프로 claude mcp add 명령어 사용
+4. **공식 사이트 확인 후 권장 방법으로 설치**: npm, pip, uvx 등으로 직접 설치
+
+**MCP 서버 제거 시**: `claude mcp remove [server-name]`
+
+---
+
+## Project Overview
+
+Excel Macro Automation is a Python desktop application for automating repetitive tasks by reading Excel files and executing screen automation sequences. Designed for non-technical users in office/medical environments.
+
+## Quick Start Commands
+
+### Running the Application
+```bash
+# Primary method - simple and fast (recommended)
+RUN_SIMPLE.bat
+
+# Complete setup with dependency installation
+WINDOWS_RUN.bat
+
+# Python direct execution - handles import fixing automatically
+python run_main.py
+
+# Alternative Python launchers
+python run_main_fixed.py
+python run_simple.py
+```
+
+### Development Commands
+```bash
+# Install dependencies (Windows batch)
+INSTALL_DEPENDENCIES.bat
+
+# Or manual dependency installation
+pip install -r requirements.txt
+
+# Manual application testing as needed
+
+# Code formatting (line length: 100)
+black src/ --line-length 100
+
+# Linting
+flake8 src/ --max-line-length=100
+
+# Build executable
+pyinstaller excel_macro.spec
+```
+
+### Manual Testing
+Manual testing can be performed by running the application and testing functionality.
+
+## Architecture Overview
+
+### Tech Stack
+- **GUI**: PyQt5 (primary), Tkinter (fallback)
+- **Data**: pandas, openpyxl for Excel processing
+- **Automation**: pyautogui, opencv-python for screen interaction
+- **Vision**: easyocr for OCR, mss for screenshots
+- **Security**: cryptography for AES-256 encryption
+- **Build**: PyInstaller for single-file distribution
+
+### Core Components
+```
+src/
+├── ui/main_window.py          # Main application window with tabbed interface
+├── automation/engine.py       # Core automation execution engine
+├── excel/excel_manager.py     # Excel file processing and data mapping
+├── core/macro_storage.py      # Macro serialization/persistence
+├── vision/                    # OCR and image recognition modules
+├── config/settings.py         # Application configuration with encryption
+└── logger/app_logger.py       # Logging infrastructure
+```
+
+### Application Flow
+1. **Excel Tab**: Load files, map sheets/columns, preview data
+2. **Editor Tab**: Drag & drop macro step creation with visual workflow builder
+3. **Run Tab**: Execute macros with progress monitoring and CSV logging
+4. Data flows: Excel → Core Controller → Automation Engine → Screen actions → Logs
+
+### Key Features
+- **Drag & Drop Editor**: Visual macro builder with step configuration dialogs
+- **Screen Automation**: Mouse/keyboard actions, image search, OCR text recognition
+- **Conditional Logic**: If statements, loops, variables with Excel data binding
+- **Multi-language**: Korean/English localization (resources/locales/)
+- **Error Recovery**: Automated error handling with detailed reporting
+- **Execution Logging**: CSV logs with filtering and export capabilities
+
+## Development Guidelines
+
+### Code Architecture Patterns
+- **MVC Pattern**: Established structure with clear separation of concerns
+- **Component Organization**: UI widgets in separate modules with dialog system
+- **Event-Driven**: PyQt5 signal/slot system for UI interactions
+- **Data Layer**: Excel integration with status tracking and CSV output
+
+### Import Structure
+- Use absolute imports (handled automatically by run_main.py)
+- Core modules: `from automation.engine import AutomationEngine`
+- UI components: `from ui.widgets.excel_widget import ExcelWidget`
+- Config/Utils: `from config.settings import Settings`
+
+### File Naming Conventions
+- Python files: snake_case.py
+- UI dialogs: `*_dialog.py` in `src/ui/dialogs/`
+- Temporary files: `temp_*.py` for debugging
+- Batch scripts: UPPERCASE.bat for Windows operations
+
+### Windows Environment Considerations  
+- **C Drive Direct Execution**: No more WSL file copying - runs directly from project directory
+- **Path Handling**: Use Path objects; JSON configs require escaped backslashes (`\\\\`)
+- **Dependency Management**: INSTALL_DEPENDENCIES.bat handles all package installation
+- **Batch Scripts**: RUN_SIMPLE.bat (fast) and WINDOWS_RUN.bat (complete setup)
+- **Screen Resolution**: Minimum 1280x720, handles DPI scaling
+
+### Quality Assurance
+- **Manual Testing**: Comprehensive testing of drag&drop, execution, logging
+- **Error Collection**: Use COLLECT_ERRORS_WINDOWS.bat for systematic error reporting
+- **Code Quality**: Use black and flake8 for formatting and linting
+
+### Configuration Management
+- **Settings**: `src/config/settings.py` with AES-256 encryption for sensitive data
+- **Localization**: JSON files in `resources/locales/` (en.json, ko.json)
+- **Build Config**: `pyproject.toml` defines tool configurations (black, flake8, mypy)
+
+### Security Considerations
+- No hardcoded API keys or credentials
+- AES-256 encryption for saved macro files (.emf format)
+- Local-only operation (no internet required)
+- Sensitive data handling in error reports
+
+### Error Handling Best Practices
+- Use established logging infrastructure (`logger.app_logger`)
+- Implement comprehensive error dialogs with actionable information
+- Include screenshot capture in error reports
+- Follow error recovery patterns in existing codebase
+
+### Performance Considerations
+- Handle large Excel files (100+ rows) efficiently
+- Monitor memory usage during long-running operations
+- Implement proper cleanup for screen capture resources
+- Use threading for non-blocking UI operations during automation
+
+---
+
 # Git Commit Message Rules
 
 ## Format Structure
@@ -16,7 +188,6 @@
 - `style`: formatting, missing semi colons, etc
 - `refactor`: code change that neither fixes bug nor adds feature
 - `perf`: performance improvement
-- `test`: adding missing tests
 - `chore`: updating grunt tasks, dependencies, etc
 - `ci`: changes to CI configuration
 - `build`: changes affecting build system
@@ -67,101 +238,6 @@ BREAKING CHANGE: remove deprecated getUserData() method
 - [ ] Imperative mood used
 - [ ] No trailing period
 - [ ] Meaningful and clear context
-
-# TDD Process Guidelines - Cursor Rules
-
-## ⚠️ MANDATORY: Follow these rules for EVERY implementation and modification
-
-**This document defines the REQUIRED process for all code changes. No exceptions without explicit team approval.**
-
-## Core Cycle: Red → Green → Refactor
-
-### 1. RED Phase
-- Write a failing test FIRST
-- Test the simplest scenario
-- Verify test fails for the right reason
-- One test at a time
-
-### 2. GREEN Phase  
-- Write MINIMAL code to pass
-- "Fake it till you make it" is OK
-- No premature optimization
-- YAGNI principle
-
-### 3. REFACTOR Phase
-- Remove duplication
-- Improve naming
-- Simplify structure
-- Keep tests passing
-
-## Test Quality: FIRST Principles
-- **Fast**: Milliseconds, not seconds
-- **Independent**: No shared state
-- **Repeatable**: Same result every time
-- **Self-validating**: Pass/fail, no manual checks
-- **Timely**: Written just before code
-
-## Test Structure: AAA Pattern
-```
-// Arrange
-Set up test data and dependencies
-
-// Act
-Execute the function/method
-
-// Assert
-Verify expected outcome
-```
-
-## Implementation Flow
-1. **List scenarios** before coding
-2. **Pick one scenario** → Write test
-3. **Run test** → See it fail (Red)
-4. **Implement** → Make it pass (Green)
-5. **Refactor** → Clean up (Still Green)
-6. **Commit** → Small, frequent commits
-7. **Repeat** → Next scenario
-
-## Test Pyramid Strategy
-- **Unit Tests** (70%): Fast, isolated, numerous
-- **Integration Tests** (20%): Module boundaries
-- **Acceptance Tests** (10%): User scenarios
-
-## Outside-In vs Inside-Out
-- **Outside-In**: Start with user-facing test → Mock internals → Implement details
-- **Inside-Out**: Start with core logic → Build outward → Integrate components
-
-## Common Anti-patterns to Avoid
-- Testing implementation details
-- Fragile tests tied to internals  
-- Missing assertions
-- Slow, environment-dependent tests
-- Ignored failing tests
-
-## When Tests Fail
-1. **Identify**: Regression, flaky test, or spec change?
-2. **Isolate**: Narrow down the cause
-3. **Fix**: Code bug or test bug
-4. **Learn**: Add missing test cases
-
-## Team Practices
-- CI/CD integration mandatory
-- No merge without tests
-- Test code = Production code quality
-- Pair programming for complex tests
-- Regular test refactoring
-
-## Pragmatic Exceptions
-- UI/Graphics: Manual + snapshot tests
-- Performance: Benchmark suites
-- Exploratory: Spike then test
-- Legacy: Test on change
-
-## Remember
-- Tests are living documentation
-- Test behavior, not implementation
-- Small steps, fast feedback
-- When in doubt, write a test
 # Clean Code Guidelines
 
 You are an expert software engineer focused on writing clean, maintainable code. Follow these principles rigorously:
@@ -208,13 +284,10 @@ You are an expert software engineer focused on writing clean, maintainable code.
 - Never catch generic exceptions
 - Log errors with context
 
-## Testing
-- **TDD** when possible
-- Test behavior, not implementation
-- One assertion per test
-- Descriptive test names: `should_X_when_Y`
-- **AAA pattern**: Arrange, Act, Assert
-- Maintain test coverage > 80%
+## Quality Assurance
+- Manual testing of key features
+- Code review before commits
+- Error handling verification
 
 ## Performance & Optimization
 - Profile before optimizing
@@ -255,7 +328,6 @@ You are an expert software engineer focused on writing clean, maintainable code.
 
 ## Final Checklist
 Before committing, ensure:
-- [ ] All tests pass
 - [ ] No linting errors
 - [ ] No console logs
 - [ ] No commented code

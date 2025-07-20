@@ -48,10 +48,7 @@ Run the application:
 python main.py
 ```
 
-Run tests:
-```bash
-pytest
-```
+Manual testing as needed for functionality verification.
 
 Build executable:
 ```bash
@@ -71,7 +68,6 @@ macro/
 │   ├── utils/        # Utilities (encryption, etc.)
 │   ├── config/       # Configuration management
 │   └── logger/       # Logging system
-├── tests/            # Test suites
 ├── resources/        # Icons, templates, locales
 ├── docs/             # Documentation
 └── main.py           # Application entry point
