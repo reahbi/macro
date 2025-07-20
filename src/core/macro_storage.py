@@ -29,7 +29,15 @@ class MacroStorage:
         """Initialize macro storage"""
         self.logger = get_logger(__name__)
         self.storage_dir = storage_dir or Path.home() / ".excel_macro_automation" / "macros"
-        self.storage_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.storage_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            self.logger.warning(f"Could not create storage directory: {e}")
+            # Use temp directory as fallback
+            import tempfile
+            self.storage_dir = Path(tempfile.gettempdir()) / "excel_macro_automation" / "macros"
+            self.storage_dir.mkdir(parents=True, exist_ok=True)
+        
         self.encryption_manager = EncryptionManager()
         
     def save_macro(self, macro: Macro, file_path: Optional[str] = None, 
@@ -43,7 +51,10 @@ class MacroStorage:
             
         # Create backup if requested and file exists
         if create_backup and file_path.exists():
-            self._create_backup(file_path)
+            try:
+                self._create_backup(file_path)
+            except Exception as e:
+                self.logger.warning(f"Could not create backup: {e}")
             
         # Prepare data
         data = {
@@ -214,18 +225,21 @@ class MacroStorage:
         
     def _create_backup(self, file_path: Path):
         """Create backup of file"""
-        backup_dir = self.storage_dir / "backups"
-        backup_dir.mkdir(exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_name = f"{file_path.stem}_backup_{timestamp}{file_path.suffix}"
-        backup_path = backup_dir / backup_name
-        
-        shutil.copy2(file_path, backup_path)
-        self.logger.info(f"Created backup: {backup_path}")
-        
-        # Clean old backups (keep last 10)
-        self._clean_old_backups(file_path.stem)
+        try:
+            backup_dir = self.storage_dir / "backups"
+            backup_dir.mkdir(exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_name = f"{file_path.stem}_backup_{timestamp}{file_path.suffix}"
+            backup_path = backup_dir / backup_name
+            
+            shutil.copy2(file_path, backup_path)
+            self.logger.info(f"Created backup: {backup_path}")
+            
+            # Clean old backups (keep last 10)
+            self._clean_old_backups(file_path.stem)
+        except Exception as e:
+            self.logger.warning(f"Backup creation failed: {e}")
         
     def _clean_old_backups(self, file_stem: str, keep_count: int = 10):
         """Clean old backup files"""

@@ -30,6 +30,7 @@ class StepType(Enum):
     SCREENSHOT = "screenshot"
     IMAGE_SEARCH = "image_search"
     OCR_TEXT = "ocr_text"
+    DYNAMIC_TEXT_SEARCH = "dynamic_text_search"
     
     # Flow control
     IF_CONDITION = "if_condition"
@@ -602,6 +603,12 @@ class ScreenshotStep(MacroStep):
 
 # Step Factory
 
+# Import additional step types
+try:
+    from .dynamic_text_step import DynamicTextSearchStep
+except ImportError:
+    DynamicTextSearchStep = None
+
 class StepFactory:
     """Factory for creating macro steps"""
     
@@ -618,6 +625,10 @@ class StepFactory:
         StepType.IF_CONDITION: IfConditionStep,
         StepType.LOOP: LoopStep
     }
+    
+    # Add dynamic text search if available
+    if DynamicTextSearchStep:
+        _step_classes[StepType.DYNAMIC_TEXT_SEARCH] = DynamicTextSearchStep
     
     @classmethod
     def create_step(cls, step_type: StepType) -> MacroStep:

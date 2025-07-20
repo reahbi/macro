@@ -12,8 +12,11 @@ import mss
 from logger.app_logger import get_logger
 from utils.monitor_utils import get_total_screen_bounds, get_monitor_at_position
 
-# EasyOCR is required
-import easyocr
+# EasyOCR is optional - will work without it
+try:
+    import easyocr
+except ImportError:
+    easyocr = None
 
 @dataclass
 class TextResult:
@@ -42,13 +45,23 @@ class TextExtractor:
             self.sct = mss.mss()
             self.initialized = True
             
-    def _get_reader(self) -> easyocr.Reader:
+    def _get_reader(self) -> Optional['easyocr.Reader']:
         """Get or create EasyOCR reader (lazy loading)"""
+        if easyocr is None:
+            self.logger.warning("EasyOCR not installed - OCR functionality disabled")
+            return None
+            
         if TextExtractor._reader is None:
-            self.logger.info("Initializing EasyOCR reader with Korean and English support...")
-            # Initialize with Korean and English
-            TextExtractor._reader = easyocr.Reader(['ko', 'en'], gpu=False)
-            self.logger.info("EasyOCR reader initialized successfully")
+            try:
+                self.logger.info("Initializing EasyOCR reader with Korean and English support...")
+                # Initialize with Korean and English
+                # Set download_enabled=True to auto-download models if needed
+                TextExtractor._reader = easyocr.Reader(['ko', 'en'], gpu=False, download_enabled=True)
+                self.logger.info("EasyOCR reader initialized successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize EasyOCR: {e}")
+                self.logger.warning("OCR functionality will be disabled")
+                return None
         return TextExtractor._reader
     
     def extract_text_from_region(self, region: Optional[Tuple[int, int, int, int]] = None,
@@ -81,9 +94,16 @@ class TextExtractor:
             
             # Get reader
             reader = self._get_reader()
+            if reader is None:
+                self.logger.warning("OCR reader not available")
+                return []
             
             # Perform OCR
-            results = reader.readtext(img_rgb)
+            try:
+                results = reader.readtext(img_rgb)
+            except Exception as e:
+                self.logger.error(f"OCR failed: {e}")
+                return []
             
             # Process results
             text_results = []

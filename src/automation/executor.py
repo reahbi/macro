@@ -298,14 +298,30 @@ class StepExecutor:
     def _execute_text_search(self, step) -> Optional[Tuple[int, int]]:
         """Execute text search and optionally click"""
         if not self._text_extractor:
-            raise RuntimeError("Text extractor not available (EasyOCR not installed)")
+            self.logger.warning("Text extractor not available - OCR functionality disabled")
+            return None
             
-        # Get search text
-        search_text = step.search_text
-        
-        # If using Excel column, get value from variables
-        if step.excel_column and step.excel_column in self.variables:
-            search_text = str(self.variables[step.excel_column])
+        # Handle different step types
+        if hasattr(step, 'search_text'):
+            # DynamicTextSearchStep
+            search_text = step.search_text
+            region = getattr(step, 'search_region', None)
+            confidence = getattr(step, 'confidence_threshold', 0.7)
+            click_on_found = getattr(step, 'click_on_found', True)
+            fail_if_not_found = getattr(step, 'fail_if_not_found', True)
+            mask_in_logs = getattr(step, 'mask_in_logs', False)
+        else:
+            # Legacy OCRTextStep
+            search_text = getattr(step, 'text', step.search_text)
+            region = getattr(step, 'region', None)
+            confidence = getattr(step, 'confidence', 0.7)
+            click_on_found = getattr(step, 'click_after_find', True)
+            fail_if_not_found = False
+            mask_in_logs = False
+            
+            # Handle Excel column reference
+            if hasattr(step, 'excel_column') and step.excel_column and step.excel_column in self.variables:
+                search_text = str(self.variables[step.excel_column])
             
         if not search_text:
             raise ValueError("No search text specified")
@@ -313,23 +329,30 @@ class StepExecutor:
         # Replace variables in search text
         search_text = self._substitute_variables(search_text)
         
-        self.logger.info(f"Searching for text: {search_text}")
+        # Log search (mask if sensitive)
+        if mask_in_logs:
+            self.logger.info("Searching for text: [MASKED]")
+        else:
+            self.logger.info(f"Searching for text: {search_text}")
         
         # Find text on screen
         result = self._text_extractor.find_text(
             search_text,
-            region=step.region,
-            exact_match=step.exact_match,
-            confidence_threshold=step.confidence
+            region=region,
+            confidence=confidence
         )
         
         if result:
-            self.logger.info(f"Text found at: {result.center}")
+            if mask_in_logs:
+                self.logger.info("Text found at: [MASKED LOCATION]")
+            else:
+                self.logger.info(f"Text found at: {result.center}")
             
             # Click if requested
-            if step.click_after_find:
-                click_x = result.center[0] + step.click_offset[0]
-                click_y = result.center[1] + step.click_offset[1]
+            if click_on_found:
+                click_offset = getattr(step, 'click_offset', (0, 0))
+                click_x = result.center[0] + click_offset[0]
+                click_y = result.center[1] + click_offset[1]
                 
                 # Perform click
                 if hasattr(step, 'double_click') and step.double_click:
@@ -341,8 +364,13 @@ class StepExecutor:
                 
             return result.center
         else:
-            self.logger.warning(f"Text not found: {search_text}")
-            return None
+            # Handle not found case
+            if fail_if_not_found:
+                error_msg = f"Text not found: {search_text if not mask_in_logs else '[MASKED]'}"
+                raise ValueError(error_msg)
+            else:
+                self.logger.warning(f"Text not found: {search_text if not mask_in_logs else '[MASKED]'}")
+                return None
     
     # Flow control handlers
     

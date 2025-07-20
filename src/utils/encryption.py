@@ -113,6 +113,20 @@ class EncryptionManager:
         encrypted_data = input_path.read_bytes()
         data = self.decrypt(encrypted_data, password)
         output_path.write_bytes(data)
+    
+    def is_key_valid(self) -> bool:
+        """Check if stored key is valid"""
+        return hasattr(self, 'key') and self.key is not None and len(self.key) == 32
+    
+    def generate_key(self) -> bytes:
+        """Generate a new encryption key"""
+        return os.urandom(32)
+    
+    @classmethod
+    def reset_instance(cls):
+        """Reset singleton instance (for testing)"""
+        cls._instance = None
+        cls._initialized = False
 
 
 # Global encryption manager instance
