@@ -68,8 +68,9 @@ class ExcelWidget(QWidget):
         self.data_preview.rowSelected.connect(self._on_row_selected)
         splitter.addWidget(self.data_preview)
         
-        # Set initial splitter sizes (30%, 30%, 40%)
-        splitter.setSizes([300, 300, 400])
+        # Set initial splitter sizes - minimize file selector, balance sheet mapper and data preview
+        # File selector: 150px (minimized), Sheet mapper: 250px, Data preview: 600px (maximized)
+        splitter.setSizes([150, 250, 600])
         
         layout.addWidget(splitter)
         self.setLayout(layout)
@@ -156,9 +157,9 @@ class ExcelWidget(QWidget):
         splitter = self.findChild(QSplitter)
         
         if is_compact:
-            # Reduce splitter sizes and spacing
+            # Reduce splitter sizes and spacing - prioritize data preview
             if splitter:
-                splitter.setSizes([200, 200, 300])
+                splitter.setSizes([100, 150, 450])
                 
             # Apply compact mode to child widgets
             if hasattr(self.file_selector, 'set_compact_mode'):
@@ -172,9 +173,9 @@ class ExcelWidget(QWidget):
             self.layout().setContentsMargins(5, 5, 5, 5)
             self.layout().setSpacing(5)
         else:
-            # Reset to normal sizes
+            # Reset to normal sizes - prioritize data preview
             if splitter:
-                splitter.setSizes([300, 300, 400])
+                splitter.setSizes([150, 250, 600])
                 
             # Reset child widgets
             if hasattr(self.file_selector, 'set_compact_mode'):

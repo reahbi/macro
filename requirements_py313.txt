@@ -1,0 +1,41 @@
+# Python 3.13 Compatible Requirements
+# Updated: 2025-01-21
+# These versions are specifically tested for Python 3.13 compatibility
+
+# Core GUI Framework
+PyQt5>=5.15.0
+
+# Data Processing
+pandas>=2.0.0
+openpyxl>=3.0.0
+# NumPy 2.3.0+ supports Python 3.13
+numpy==2.3.0
+
+# Screen Automation
+pyautogui>=0.9.53
+pillow>=10.0.0
+# OpenCV 4.12.0.88+ is built with NumPy 2.x for Python 3.9+
+opencv-python==4.12.0.88
+pynput>=1.7.0
+
+# Screen Information
+screeninfo>=0.8.0
+mss>=9.0.0
+
+# OCR (Optical Character Recognition)
+# EasyOCR with Python 3.13 compatible torch
+easyocr>=1.7.0
+# PyTorch CPU version for better compatibility
+torch>=2.0.0; sys_platform == 'win32'
+torchvision>=0.15.0; sys_platform == 'win32'
+
+# Security
+cryptography>=41.0.0
+
+# Utils
+chardet>=5.0.0
+psutil>=5.9.0
+
+# Development tools (optional)
+black>=23.0.0
+flake8>=6.0.0

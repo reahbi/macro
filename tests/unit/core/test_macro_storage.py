@@ -147,16 +147,15 @@ class TestMacroSaving:
         mock_write_text.assert_called_once()
     
     @patch('pathlib.Path.write_text', side_effect=Exception("Write error"))
-    @patch('logger.app_logger.get_logger')
-    def test_save_macro_error_handling(self, mock_logger, mock_write_text):
+    def test_save_macro_error_handling(self, mock_write_text):
         """Test error handling during save operation"""
-        mock_log = Mock()
-        mock_logger.return_value = mock_log
+        # Mock the logger on the storage instance
+        self.storage.logger = Mock()
         
         result = self.storage.save_macro(self.test_macro)
         
         assert result is False
-        mock_log.error.assert_called_once()
+        self.storage.logger.error.assert_called_once()
     
     def test_save_macro_data_structure(self):
         """Test the structure of saved macro data"""

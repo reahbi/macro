@@ -105,9 +105,11 @@ class DataPreviewWidget(QWidget):
         """Initialize UI"""
         layout = QVBoxLayout()
         
-        # Filter controls
+        # Filter controls - make more compact
         filter_group = QGroupBox("필터 옵션")
+        filter_group.setMaximumHeight(80)  # Limit height to save space
         filter_layout = QHBoxLayout()
+        filter_layout.setContentsMargins(5, 5, 5, 5)  # Reduce margins
         
         # Status filter
         self.incomplete_only = QCheckBox("미완료 항목만 표시")

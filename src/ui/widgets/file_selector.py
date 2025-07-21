@@ -26,9 +26,9 @@ class FileDropArea(QLabel):
             QLabel {
                 border: 2px dashed #aaa;
                 border-radius: 5px;
-                padding: 20px;
+                padding: 10px;
                 background-color: #f5f5f5;
-                min-height: 100px;
+                min-height: 60px;
             }
             QLabel:hover {
                 border-color: #555;
@@ -50,9 +50,9 @@ class FileDropArea(QLabel):
                             QLabel {
                                 border: 2px solid #4CAF50;
                                 border-radius: 5px;
-                                padding: 20px;
+                                padding: 10px;
                                 background-color: #e8f5e9;
-                                min-height: 100px;
+                                min-height: 60px;
                             }
                         """)
                         return
@@ -64,9 +64,9 @@ class FileDropArea(QLabel):
             QLabel {
                 border: 2px dashed #aaa;
                 border-radius: 5px;
-                padding: 20px;
+                padding: 10px;
                 background-color: #f5f5f5;
-                min-height: 100px;
+                min-height: 60px;
             }
         """)
         
@@ -88,7 +88,7 @@ class RecentFilesList(QListWidget):
     
     def __init__(self):
         super().__init__()
-        self.setMaximumHeight(150)
+        self.setMaximumHeight(80)  # Reduced from 150 to save space
         self.itemDoubleClicked.connect(self._on_item_double_clicked)
         
     def add_recent_file(self, file_path: str):

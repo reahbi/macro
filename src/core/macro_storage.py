@@ -41,13 +41,16 @@ class MacroStorage:
         self.encryption_manager = EncryptionManager()
         
     def save_macro(self, macro: Macro, file_path: Optional[str] = None, 
-                   format_type: MacroFormat = MacroFormat.JSON, create_backup: bool = True) -> bool:
+                   format: str = "json", create_backup: bool = True) -> bool:
         """Save macro to file"""
         if not file_path:
             file_name = f"{macro.name.replace(' ', '_')}_{macro.macro_id[:8]}.json"
             file_path = self.storage_dir / file_name
         else:
             file_path = Path(file_path)
+        
+        # Ensure parent directory exists
+        file_path.parent.mkdir(parents=True, exist_ok=True)
             
         # Create backup if requested and file exists
         if create_backup and file_path.exists():
@@ -67,7 +70,7 @@ class MacroStorage:
         
         # Save file
         try:
-            if format_type == MacroFormat.ENCRYPTED:
+            if format == "encrypted" or format == "emf":
                 encrypted_data = self.encryption_manager.encrypt(json_str.encode('utf-8'))
                 file_path = file_path.with_suffix('.emf')
                 file_path.write_bytes(encrypted_data)
@@ -106,11 +109,30 @@ class MacroStorage:
             self.logger.info(f"Loaded macro: {macro.name} from {file_path}")
             return macro
         else:
-            # Use safe loader for regular files
-            macro = load_macro_safe(str(file_path))
-            if not macro:
-                raise ValueError(f"Failed to load macro from {file_path}")
-            return macro
+            # Load JSON file with schema check
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                # Check if it's our format with schema
+                if "schema_version" in data and "macro" in data:
+                    macro_data = data["macro"]
+                    macro = Macro.from_dict(macro_data)
+                else:
+                    # Legacy format - use safe loader
+                    macro = load_macro_safe(str(file_path))
+                    if not macro:
+                        raise ValueError(f"Failed to load macro from {file_path}")
+                
+                self.logger.info(f"Loaded macro: {macro.name} from {file_path}")
+                return macro
+            except Exception as e:
+                # Fallback to safe loader
+                self.logger.warning(f"Standard load failed, trying safe loader: {e}")
+                macro = load_macro_safe(str(file_path))
+                if not macro:
+                    raise ValueError(f"Failed to load macro from {file_path}")
+                return macro
         
     def list_macros(self, include_encrypted: bool = True) -> List[Dict[str, Any]]:
         """List all saved macros"""

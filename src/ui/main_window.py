@@ -160,6 +160,15 @@ class MainWindow(QMainWindow):
         log_viewer_action.triggered.connect(self.show_log_viewer)
         view_menu.addAction(log_viewer_action)
         
+        # Tools menu
+        tools_menu = menubar.addMenu("Tools")
+        
+        # OCR reinstall action
+        ocr_action = QAction("Reinstall OCR Components", self)
+        ocr_action.setStatusTip("Reinstall text search (OCR) components")
+        ocr_action.triggered.connect(self.reinstall_ocr)
+        tools_menu.addAction(ocr_action)
+        
         # Help menu
         help_menu = menubar.addMenu("Help")
         
@@ -191,6 +200,28 @@ class MainWindow(QMainWindow):
         from ui.dialogs.log_viewer_dialog import LogViewerDialog
         dialog = LogViewerDialog(parent=self)
         dialog.show()  # Non-modal
+    
+    def reinstall_ocr(self):
+        """Reinstall OCR components"""
+        from utils.ocr_manager import OCRManager, OCRStatus
+        from ui.dialogs.first_run_dialog import FirstRunDialog
+        
+        reply = QMessageBox.question(
+            self,
+            "OCR 재설치",
+            "텍스트 검색 기능(OCR)을 재설치하시겠습니까?\n\n"
+            "약 300MB의 데이터를 다시 다운로드합니다.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # Reset OCR status
+            ocr_manager = OCRManager()
+            ocr_manager.set_status(OCRStatus.NOT_INSTALLED)
+            
+            # Show first run dialog
+            dialog = FirstRunDialog(self)
+            dialog.exec_()
         
     def closeEvent(self, event):
         """Handle window close event"""

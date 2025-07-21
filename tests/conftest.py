@@ -15,6 +15,53 @@ from unittest.mock import Mock, patch, MagicMock
 # Add src to Python path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+# Mock EasyOCR for all tests
+@pytest.fixture(autouse=True)
+def mock_easyocr_globally():
+    """Mock EasyOCR to avoid initialization in tests"""
+    # Mock the easyocr module itself
+    mock_easyocr = MagicMock()
+    mock_reader = Mock()
+    mock_reader.readtext.return_value = []
+    mock_easyocr.Reader.return_value = mock_reader
+    
+    with patch.dict('sys.modules', {'easyocr': mock_easyocr}):
+        yield mock_easyocr
+
+@pytest.fixture(autouse=True)
+def mock_vision_dependencies():
+    """Mock all vision dependencies to avoid import errors"""
+    # Create comprehensive mocks for cv2
+    mock_cv2 = MagicMock()
+    mock_cv2.__version__ = '4.8.0'
+    mock_cv2.imread.return_value = MagicMock()
+    mock_cv2.cvtColor.return_value = MagicMock()
+    mock_cv2.matchTemplate.return_value = MagicMock()
+    mock_cv2.minMaxLoc.return_value = (0, 0.95, (0, 0), (100, 100))
+    
+    # Mock mss
+    mock_mss = MagicMock()
+    mock_sct = MagicMock()
+    mock_sct.monitors = [{"left": 0, "top": 0, "width": 1920, "height": 1080}]
+    mock_sct.grab.return_value = MagicMock()
+    mock_mss.mss.return_value.__enter__.return_value = mock_sct
+    
+    # Mock numpy if needed
+    mock_numpy = MagicMock()
+    mock_numpy.array.return_value = MagicMock()
+    mock_numpy.uint8 = MagicMock()
+    
+    # Apply all mocks
+    patches = {
+        'cv2': mock_cv2,
+        'mss': mock_mss,
+        'numpy': mock_numpy,
+        'easyocr': MagicMock()
+    }
+    
+    with patch.dict('sys.modules', patches):
+        yield
+
 # PyQt5 setup for GUI tests
 @pytest.fixture(scope="session")
 def qapp():

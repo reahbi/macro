@@ -41,8 +41,13 @@ class TestEngineExecutorBasicIntegration:
     @pytest.fixture
     def step_executor(self, mock_settings):
         """Create StepExecutor for testing"""
-        executor = StepExecutor(mock_settings)
-        return executor
+        with patch('automation.executor.TextExtractor') as mock_text_extractor:
+            # Mock the TextExtractor to avoid EasyOCR initialization
+            mock_instance = Mock()
+            mock_text_extractor.return_value = mock_instance
+            
+            executor = StepExecutor(mock_settings)
+            return executor
     
     @pytest.fixture
     def simple_macro(self):

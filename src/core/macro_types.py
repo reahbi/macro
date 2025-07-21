@@ -604,10 +604,7 @@ class ScreenshotStep(MacroStep):
 # Step Factory
 
 # Import additional step types
-try:
-    from .dynamic_text_step import DynamicTextSearchStep
-except ImportError:
-    DynamicTextSearchStep = None
+from .dynamic_text_step import DynamicTextSearchStep
 
 class StepFactory:
     """Factory for creating macro steps"""
@@ -626,9 +623,8 @@ class StepFactory:
         StepType.LOOP: LoopStep
     }
     
-    # Add dynamic text search if available
-    if DynamicTextSearchStep:
-        _step_classes[StepType.DYNAMIC_TEXT_SEARCH] = DynamicTextSearchStep
+    # Add dynamic text search
+    _step_classes[StepType.DYNAMIC_TEXT_SEARCH] = DynamicTextSearchStep
     
     @classmethod
     def create_step(cls, step_type: StepType) -> MacroStep:

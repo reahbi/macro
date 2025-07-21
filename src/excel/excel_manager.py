@@ -21,6 +21,8 @@ class ExcelManager:
         self._current_file: Optional[str] = None
         self._current_data: Optional[ExcelData] = None
         self._column_mappings: Dict[str, ColumnMapping] = {}
+        self.df: Optional[pd.DataFrame] = None  # For direct DataFrame access
+        self.mappings: Dict[str, str] = {}  # For simple column mappings
     
     @property
     def file_path(self) -> Optional[str]:
@@ -54,6 +56,10 @@ class ExcelManager:
             sheets.append(sheet_info)
         
         self._current_file = str(file_path)
+        
+        # Load first sheet into df for simple access
+        if sheet_names:
+            self.df = pd.read_excel(file_path, sheet_name=sheet_names[0])
         
         return ExcelFileInfo(
             file_path=str(file_path),
@@ -236,3 +242,25 @@ class ExcelManager:
         
         incomplete = self._current_data.get_incomplete_rows()
         return incomplete.index.tolist()
+    
+    def has_data(self) -> bool:
+        """데이터가 로드되었는지 확인"""
+        return self.df is not None and not self.df.empty
+    
+    def get_total_rows(self) -> int:
+        """전체 행 수 반환"""
+        return len(self.df) if self.df is not None else 0
+    
+    def get_headers(self) -> List[str]:
+        """컬럼 헤더 목록 반환"""
+        return list(self.df.columns) if self.df is not None else []
+    
+    def get_row_data(self, row_index: int) -> Dict[str, Any]:
+        """특정 행의 데이터 반환"""
+        if not self.has_data() or row_index >= self.get_total_rows():
+            return {}
+        return self.df.iloc[row_index].to_dict()
+    
+    def add_mapping(self, variable: str, column: str):
+        """변수와 컬럼 매핑 추가"""
+        self.mappings[variable] = column

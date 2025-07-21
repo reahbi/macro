@@ -55,13 +55,14 @@ class StepExecutor:
             self._image_matcher = None
             
     def _init_text_extractor(self):
-        """Initialize text extractor with fallback"""
+        """Initialize text extractor"""
         try:
             from vision.text_extractor import TextExtractor
             self._text_extractor = TextExtractor()
             self.logger.info("Using EasyOCR-based text extractor")
-        except ImportError:
-            self.logger.warning("EasyOCR not available, text search disabled")
+        except Exception as e:
+            self.logger.warning(f"Text extraction not available: {e}")
+            self.logger.warning("Text search features will be disabled")
             self._text_extractor = None
         
     def set_variables(self, variables: Dict[str, Any]):
@@ -298,8 +299,19 @@ class StepExecutor:
     def _execute_text_search(self, step) -> Optional[Tuple[int, int]]:
         """Execute text search and optionally click"""
         if not self._text_extractor:
-            self.logger.warning("Text extractor not available - OCR functionality disabled")
-            return None
+            # OCR이 설치되지 않은 경우 사용자에게 알림
+            from utils.ocr_manager import OCRManager
+            ocr_manager = OCRManager()
+            
+            if not ocr_manager.is_installed():
+                self.logger.error("텍스트 검색 기능을 사용하려면 OCR 구성요소가 필요합니다.")
+                raise RuntimeError(
+                    "텍스트 검색 기능을 사용하려면 OCR 구성요소가 필요합니다.\n"
+                    "프로그램을 재시작하면 자동으로 설치됩니다."
+                )
+            else:
+                self.logger.error("OCR이 설치되었지만 초기화에 실패했습니다.")
+                raise RuntimeError("OCR 초기화 실패. 프로그램을 재시작해주세요.")
             
         # Handle different step types
         if hasattr(step, 'search_text'):
@@ -414,7 +426,7 @@ class StepExecutor:
                 # Substitute variables in search text
                 search_text = self._substitute_variables(search_text)
                 
-                if self._text_extractor and search_text:
+                if search_text:
                     result = self._text_extractor.find_text(
                         search_text,
                         region=region,

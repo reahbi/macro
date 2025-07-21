@@ -114,6 +114,8 @@ try:
     from ui.main_window import MainWindow
     from config.settings import Settings
     from logger.app_logger import setup_logger
+    from ui.dialogs.first_run_dialog import SplashScreenWithOCR
+    from utils.ocr_manager import OCRManager
     
     # 로거 설정
     logger = setup_logger()
@@ -122,13 +124,21 @@ try:
     # 설정 초기화
     settings = Settings()
     
+    # OCR 체크가 포함된 스플래시 스크린
+    splash = SplashScreenWithOCR()
+    splash.show_and_check_ocr()
+    
+    # 스플래시가 닫힐 때까지 대기
+    while splash.isVisible():
+        app.processEvents()
+    
     # 메인 윈도우 생성 및 표시
     window = MainWindow(settings)
     window.setWindowTitle("Excel 기반 작업 자동화 매크로")
     window.show()
     
-    print("\n✓ Excel Macro Automation 애플리케이션이 실행되었습니다!")
-    print("✓ 모든 GUI 컴포넌트가 로드되었습니다.")
+    print("\nExcel Macro Automation 애플리케이션이 실행되었습니다!")
+    print("모든 GUI 컴포넌트가 로드되었습니다.")
     print("\n기능:")
     print("- Excel 탭: 파일 불러오기, 시트 선택, 데이터 미리보기")
     print("- Editor 탭: 드래그 앤 드롭 매크로 편집")

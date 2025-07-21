@@ -3,19 +3,29 @@ Text extraction using EasyOCR for dynamic text search
 """
 
 import os
-import numpy as np
 from typing import Optional, List, Tuple, Dict, Any
 from dataclasses import dataclass
-import cv2
 from PIL import Image
 import mss
 from logger.app_logger import get_logger
 from utils.monitor_utils import get_total_screen_bounds, get_monitor_at_position
 
-# EasyOCR is optional - will work without it
+# Try to import numpy and cv2 with fallback
+try:
+    import numpy as np
+    import cv2
+    NUMPY_AVAILABLE = True
+except ImportError as e:
+    NUMPY_AVAILABLE = False
+    np = None
+    cv2 = None
+
+# Try to import EasyOCR
 try:
     import easyocr
-except ImportError:
+    EASYOCR_AVAILABLE = True
+except ImportError as e:
+    EASYOCR_AVAILABLE = False
     easyocr = None
 
 @dataclass
@@ -45,11 +55,23 @@ class TextExtractor:
             self.sct = mss.mss()
             self.initialized = True
             
+            # OCR 상태 확인
+            from utils.ocr_manager import OCRManager
+            self.ocr_manager = OCRManager()
+            
+            if not self.ocr_manager.is_available():
+                self.logger.warning("OCR이 아직 설치되지 않았습니다. 텍스트 검색 기능이 제한됩니다.")
+            
     def _get_reader(self) -> Optional['easyocr.Reader']:
         """Get or create EasyOCR reader (lazy loading)"""
-        if easyocr is None:
-            self.logger.warning("EasyOCR not installed - OCR functionality disabled")
-            return None
+        if not EASYOCR_AVAILABLE or not NUMPY_AVAILABLE:
+            error_msg = (
+                "Text extraction is not available due to missing dependencies.\n"
+                "Required: numpy, opencv-python, easyocr\n"
+                "Please install with: pip install numpy opencv-python easyocr"
+            )
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
             
         if TextExtractor._reader is None:
             try:
@@ -60,8 +82,13 @@ class TextExtractor:
                 self.logger.info("EasyOCR reader initialized successfully")
             except Exception as e:
                 self.logger.error(f"Failed to initialize EasyOCR: {e}")
-                self.logger.warning("OCR functionality will be disabled")
-                return None
+                error_msg = (
+                    f"EasyOCR initialization failed.\n"
+                    f"This may be due to Python 3.13 compatibility issues.\n"
+                    f"Consider using Python 3.12 or earlier.\n"
+                    f"Error details: {e}"
+                )
+                raise RuntimeError(error_msg)
         return TextExtractor._reader
     
     def extract_text_from_region(self, region: Optional[Tuple[int, int, int, int]] = None,
@@ -87,16 +114,23 @@ class TextExtractor:
             # Capture screenshot
             screenshot = self.sct.grab(monitor)
             
-            # Convert to numpy array
-            img = np.array(screenshot)
-            # Convert BGRA to RGB
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+            # Convert to numpy array - handle import issues
+            if not NUMPY_AVAILABLE:
+                # Fallback: convert PIL Image for EasyOCR
+                img_pil = Image.frombytes('RGB', (screenshot.width, screenshot.height), 
+                                        screenshot.bgra, 'raw', 'BGRX')
+                img_rgb = img_pil
+            else:
+                img = np.array(screenshot)
+                # Convert BGRA to RGB
+                if cv2:
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+                else:
+                    # Manual conversion if cv2 not available
+                    img_rgb = img[:, :, [2, 1, 0]]  # BGR to RGB
             
             # Get reader
             reader = self._get_reader()
-            if reader is None:
-                self.logger.warning("OCR reader not available")
-                return []
             
             # Perform OCR
             try:
@@ -260,7 +294,11 @@ class TextExtractor:
             self.logger.info("Preloading EasyOCR models...")
             reader = self._get_reader()
             # Do a dummy recognition to load models
-            dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
+            if NUMPY_AVAILABLE:
+                dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
+            else:
+                # Create dummy image with PIL
+                dummy_img = Image.new('RGB', (100, 100), color='black')
             reader.readtext(dummy_img)
             self.logger.info("EasyOCR models preloaded successfully")
         except Exception as e:
