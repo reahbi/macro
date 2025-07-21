@@ -806,9 +806,9 @@ class ImageSearchStepDialog(ImageStepDialog):
         click_layout = QVBoxLayout()
         
         # Click after find checkbox
-        self.click_after_find_check = QCheckBox("찾은 후 클릭")
-        self.click_after_find_check.setChecked(True)
-        click_layout.addWidget(self.click_after_find_check)
+        self.click_on_found_check = QCheckBox("찾은 후 클릭")
+        self.click_on_found_check.setChecked(True)
+        click_layout.addWidget(self.click_on_found_check)
         
         # Click type selection
         click_type_layout = QHBoxLayout()
@@ -842,9 +842,9 @@ class ImageSearchStepDialog(ImageStepDialog):
         click_layout.addLayout(offset_layout)
         
         # Enable/disable click options based on click checkbox
-        self.click_after_find_check.toggled.connect(self.click_type_combo.setEnabled)
-        self.click_after_find_check.toggled.connect(self.offset_x_spin.setEnabled)
-        self.click_after_find_check.toggled.connect(self.offset_y_spin.setEnabled)
+        self.click_on_found_check.toggled.connect(self.click_type_combo.setEnabled)
+        self.click_on_found_check.toggled.connect(self.offset_x_spin.setEnabled)
+        self.click_on_found_check.toggled.connect(self.offset_y_spin.setEnabled)
         
         click_group.setLayout(click_layout)
         layout.addWidget(click_group)
@@ -856,7 +856,7 @@ class ImageSearchStepDialog(ImageStepDialog):
             'confidence': self.confidence_spin.value(),
             'search_all': self.search_all_check.isChecked(),
             'max_results': self.max_results_spin.value(),
-            'click_after_find': self.click_after_find_check.isChecked(),
+            'click_on_found': self.click_on_found_check.isChecked(),
             'click_offset': (self.offset_x_spin.value(), self.offset_y_spin.value()),
             'double_click': self.click_type_combo.currentIndex() == 1  # True if "더블 클릭" selected
         }
@@ -868,8 +868,8 @@ class ImageSearchStepDialog(ImageStepDialog):
         if self.step and hasattr(self.step, 'confidence'):
             self.confidence_spin.setValue(self.step.confidence)
             
-        if self.step and hasattr(self.step, 'click_after_find'):
-            self.click_after_find_check.setChecked(self.step.click_after_find)
+        if self.step and hasattr(self.step, 'click_on_found'):
+            self.click_on_found_check.setChecked(self.step.click_on_found)
             
         if self.step and hasattr(self.step, 'click_offset'):
             offset = self.step.click_offset
@@ -904,7 +904,7 @@ class ImageSearchStepDialog(ImageStepDialog):
             
             if result.found:
                 # Show result
-                if self.click_after_find_check.isChecked():
+                if self.click_on_found_check.isChecked():
                     # Calculate click position
                     click_x = result.center[0] + self.offset_x_spin.value()
                     click_y = result.center[1] + self.offset_y_spin.value()

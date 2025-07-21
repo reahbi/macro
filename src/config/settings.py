@@ -17,7 +17,8 @@ class Settings:
         "theme": "light",
         "hotkeys": {
             "pause": "F9",
-            "stop": "Escape"
+            "stop": "Escape",
+            "start": "F5"
         },
         "execution": {
             "default_delay_ms": 100,
@@ -29,6 +30,32 @@ class Settings:
             "show_tooltips": True,
             "confirm_exit": True,
             "compact_mode": False
+        },
+        "notification": {
+            "preparation": {
+                "enabled": True,
+                "countdown_seconds": 5,
+                "minimize_window": True,
+                "show_countdown": True
+            },
+            "floating_widget": {
+                "enabled": True,
+                "default_mode": "normal",  # minimal, normal, detailed
+                "auto_hide_delay": 3000,
+                "show_completion_animation": True,
+                "opacity": 0.9
+            },
+            "system_tray": {
+                "enabled": True,
+                "show_notifications": True,
+                "notification_duration": 3000,
+                "animate_on_execution": True
+            },
+            "sound": {
+                "enabled": False,
+                "completion_sound": "",
+                "error_sound": ""
+            }
         }
     }
     

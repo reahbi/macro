@@ -8,11 +8,12 @@ from PyQt5.QtWidgets import (
     QMessageBox, QTabWidget, QFileDialog
 )
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QCloseEvent
 from config.settings import Settings
 from logger.app_logger import get_logger
 from core.macro_storage import MacroStorage, MacroFormat
 from core.macro_types import Macro
+from ui.system_tray_manager import SystemTrayManager
 import os
 from typing import List, Optional
 
@@ -28,6 +29,10 @@ class MainWindow(QMainWindow):
         self.macro_storage = MacroStorage()
         self.current_macro_path: Optional[str] = None
         self.recent_macros: List[str] = self.settings.get("macro.recent_files", [])
+        
+        # System tray manager
+        self.tray_manager = SystemTrayManager(settings, self)
+        self._connect_tray_signals()
         
         self.init_ui()
         self.load_window_state()
@@ -615,3 +620,119 @@ class MainWindow(QMainWindow):
             widget = self.tab_widget.widget(i)
             if hasattr(widget, 'set_compact_mode'):
                 widget.set_compact_mode(is_compact)
+                
+    def _connect_tray_signals(self):
+        """Connect system tray signals"""
+        if self.tray_manager:
+            self.tray_manager.showMainWindow.connect(self.show)
+            self.tray_manager.hideMainWindow.connect(self.hide)
+            self.tray_manager.startExecution.connect(self._tray_start_execution)
+            self.tray_manager.pauseExecution.connect(self._tray_pause_execution)
+            self.tray_manager.stopExecution.connect(self._tray_stop_execution)
+            self.tray_manager.showFloatingWidget.connect(self._tray_show_floating_widget)
+            self.tray_manager.hideFloatingWidget.connect(self._tray_hide_floating_widget)
+            self.tray_manager.quitApplication.connect(self.close)
+            
+    def _tray_start_execution(self):
+        """Handle start execution from tray"""
+        # Get execution widget from tab
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(i) == "실행":
+                execution_widget = self.tab_widget.widget(i)
+                if hasattr(execution_widget, 'start_execution'):
+                    execution_widget.start_execution()
+                break
+                
+    def _tray_pause_execution(self):
+        """Handle pause execution from tray"""
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(i) == "실행":
+                execution_widget = self.tab_widget.widget(i)
+                if hasattr(execution_widget, 'toggle_pause'):
+                    execution_widget.toggle_pause()
+                break
+                
+    def _tray_stop_execution(self):
+        """Handle stop execution from tray"""
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(i) == "실행":
+                execution_widget = self.tab_widget.widget(i)
+                if hasattr(execution_widget, 'stop_execution'):
+                    execution_widget.stop_execution()
+                break
+                
+    def _tray_show_floating_widget(self):
+        """Show floating widget from tray"""
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(i) == "실행":
+                execution_widget = self.tab_widget.widget(i)
+                if hasattr(execution_widget, 'floating_widget') and execution_widget.floating_widget:
+                    execution_widget.floating_widget.show()
+                    self.tray_manager.set_floating_widget_visible(True)
+                break
+                
+    def _tray_hide_floating_widget(self):
+        """Hide floating widget from tray"""
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(i) == "실행":
+                execution_widget = self.tab_widget.widget(i)
+                if hasattr(execution_widget, 'floating_widget') and execution_widget.floating_widget:
+                    execution_widget.floating_widget.hide()
+                    self.tray_manager.set_floating_widget_visible(False)
+                break
+                
+    def showEvent(self, event):
+        """Handle window show event"""
+        super().showEvent(event)
+        if self.tray_manager:
+            self.tray_manager.set_main_window_visible(True)
+            
+    def hideEvent(self, event):
+        """Handle window hide event"""
+        super().hideEvent(event)
+        if self.tray_manager:
+            self.tray_manager.set_main_window_visible(False)
+            
+    def closeEvent(self, event: QCloseEvent):
+        """Handle window close event"""
+        # Check if we should minimize to tray instead of closing
+        if self.tray_manager and self.tray_manager.tray_icon and self.tray_manager.tray_icon.isVisible():
+            # If tray is enabled and this is not a quit request
+            if not hasattr(self, '_quit_requested'):
+                event.ignore()
+                self.hide()
+                self.tray_manager.show_message(
+                    "Excel Macro Automation",
+                    "프로그램이 시스템 트레이에서 계속 실행됩니다.",
+                    duration=2000
+                )
+                return
+                
+        # Save window state before closing
+        self.save_window_state()
+        
+        # Confirm exit if enabled
+        if self.settings.get("ui.confirm_exit", True):
+            reply = QMessageBox.question(
+                self,
+                "종료 확인",
+                "프로그램을 종료하시겠습니까?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.No:
+                event.ignore()
+                return
+                
+        # Accept close event
+        event.accept()
+        
+        # Clean up tray icon
+        if self.tray_manager and self.tray_manager.tray_icon:
+            self.tray_manager.hide()
+            
+    def close(self):
+        """Override close to handle quit from tray"""
+        self._quit_requested = True
+        super().close()

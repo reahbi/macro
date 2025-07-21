@@ -86,7 +86,7 @@ class TestElectronicApprovalWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="제목 입력",
-                search_text="${제목}"
+                text="${제목}"
             ),
             
             # 6. Click amount field
@@ -101,7 +101,7 @@ class TestElectronicApprovalWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="금액 입력",
-                search_text="${금액}"
+                text="${금액}"
             ),
             
             # 8. Click content field
@@ -116,7 +116,7 @@ class TestElectronicApprovalWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="내용 입력",
-                search_text="${내용}"
+                text="${내용}"
             ),
             
             # 10. Click approval line
@@ -166,7 +166,7 @@ class TestElectronicApprovalWorkflow:
                     KeyboardTypeStep(
                         step_id=str(uuid.uuid4()),
                         name="파일경로 입력",
-                        search_text="${첨부파일}"
+                        text="${첨부파일}"
                     ),
                     DynamicTextSearchStep(
                         step_id=str(uuid.uuid4()),
@@ -290,7 +290,7 @@ class TestPayslipEmailWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="이메일 입력",
-                search_text="${이메일}"
+                text="${이메일}"
             ),
             
             # 4. Click subject field
@@ -305,7 +305,7 @@ class TestPayslipEmailWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="제목 입력",
-                search_text="[2024년 1월] ${이름}님 급여명세서"
+                text="[2024년 1월] ${이름}님 급여명세서"
             ),
             
             # 6. Click body field
@@ -320,7 +320,7 @@ class TestPayslipEmailWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="본문 입력",
-                search_text="안녕하세요 ${이름}님,\\n1월 급여명세서를 첨부합니다."
+                text="안녕하세요 ${이름}님,\\n1월 급여명세서를 첨부합니다."
             ),
             
             # 8. File attachment
@@ -335,7 +335,7 @@ class TestPayslipEmailWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="파일경로 입력",
-                search_text="${급여명세서경로}"
+                text="${급여명세서경로}"
             ),
             
             # 10. Click open

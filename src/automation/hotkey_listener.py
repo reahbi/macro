@@ -17,6 +17,7 @@ class HotkeyListener(QObject):
     """Listens for global hotkeys"""
     
     # Signals
+    startPressed = pyqtSignal()  # F5 시작 키 추가
     pausePressed = pyqtSignal()
     stopPressed = pyqtSignal()
     
@@ -28,6 +29,7 @@ class HotkeyListener(QObject):
         self._running = False
         
         # Get hotkey settings
+        self.start_key = self._parse_key(settings.get("hotkeys.start", "F5"))
         self.pause_key = self._parse_key(settings.get("hotkeys.pause", "F9"))
         self.stop_key = self._parse_key(settings.get("hotkeys.stop", "Escape"))
         
@@ -88,7 +90,7 @@ class HotkeyListener(QObject):
                 on_release=self._on_release
             )
             self._listener.start()
-            self.logger.info(f"Hotkey listener started (Pause: {self.pause_key}, Stop: {self.stop_key})")
+            self.logger.info(f"Hotkey listener started (Start: {self.start_key}, Pause: {self.pause_key}, Stop: {self.stop_key})")
         except Exception as e:
             self.logger.error(f"Failed to start hotkey listener: {e}")
             
@@ -111,8 +113,13 @@ class HotkeyListener(QObject):
             # Add to pressed keys
             self._pressed_keys.add(key)
             
+            # Check for start hotkey
+            if self._check_key(key, self.start_key):
+                self.logger.debug("Start hotkey pressed")
+                self.startPressed.emit()
+                
             # Check for pause hotkey
-            if self._check_key(key, self.pause_key):
+            elif self._check_key(key, self.pause_key):
                 self.logger.debug("Pause hotkey pressed")
                 self.pausePressed.emit()
                 

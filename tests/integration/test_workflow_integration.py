@@ -190,7 +190,7 @@ class TestWorkflowIntegration:
                     KeyboardTypeStep(
                         step_id=str(uuid.uuid4()),
                         name="데이터 입력",
-                        search_text="${값}"
+                        text="${값}"
                     )
                 ],
                 false_steps=[
@@ -297,7 +297,7 @@ class TestWorkflowIntegration:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="입력",
-                search_text="${입력값}"
+                text="${입력값}"
             ),
             IfConditionStep(
                 step_id=str(uuid.uuid4()),

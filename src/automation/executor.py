@@ -89,8 +89,8 @@ class StepExecutor:
         if not text:
             return text
             
-        # Find all {{variable}} patterns
-        pattern = r'\{\{(\w+)\}\}'
+        # Find all ${variable} patterns (common in Excel templates)
+        pattern = r'\$\{(\w+)\}'
         
         def replacer(match):
             var_name = match.group(1)
@@ -98,7 +98,13 @@ class StepExecutor:
                 return str(self.variables[var_name])
             return match.group(0)  # Keep original if not found
             
-        return re.sub(pattern, replacer, text)
+        result = re.sub(pattern, replacer, text)
+        
+        # Also support {{variable}} pattern for backward compatibility
+        pattern2 = r'\{\{(\w+)\}\}'
+        result = re.sub(pattern2, replacer, result)
+        
+        return result
         
     def _get_absolute_position(self, x: int, y: int, relative_to: str) -> Tuple[int, int]:
         """Convert coordinates to absolute screen position"""
@@ -279,7 +285,7 @@ class StepExecutor:
                 return None
         
         # If image was found and click is requested
-        if location and center and step.click_after_find:
+        if location and center and step.click_on_found:
             # Apply click offset
             click_x = center[0] + step.click_offset[0]
             click_y = center[1] + step.click_offset[1]
@@ -327,7 +333,7 @@ class StepExecutor:
             search_text = getattr(step, 'text', step.search_text)
             region = getattr(step, 'region', None)
             confidence = getattr(step, 'confidence', 0.7)
-            click_on_found = getattr(step, 'click_after_find', True)
+            click_on_found = getattr(step, 'click_on_found', True)
             fail_if_not_found = False
             mask_in_logs = False
             
@@ -351,7 +357,7 @@ class StepExecutor:
         result = self._text_extractor.find_text(
             search_text,
             region=region,
-            confidence=confidence
+            confidence_threshold=confidence
         )
         
         if result:

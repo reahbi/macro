@@ -6,7 +6,7 @@ from typing import Optional
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QProgressBar, QTableWidget, QTableWidgetItem, QGroupBox,
-    QTextEdit, QSplitter, QHeaderView, QCheckBox
+    QTextEdit, QSplitter, QHeaderView, QCheckBox, QSystemTrayIcon
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QColor, QBrush, QFont
@@ -15,6 +15,8 @@ from excel.excel_manager import ExcelManager
 from core.macro_types import Macro, MacroStep
 from config.settings import Settings
 from logger.app_logger import get_logger
+from ui.widgets.preparation_widget import PreparationWidget
+from ui.widgets.floating_status_widget import FloatingStatusWidget, ProgressData, ExecutionMode, DisplayMode
 
 class ExecutionStatusWidget(QWidget):
     """Widget showing execution status"""
@@ -157,6 +159,7 @@ class ExecutionControlWidget(QWidget):
     """Execution control buttons"""
     
     startRequested = pyqtSignal()
+    prepareRequested = pyqtSignal()  # 동작 준비 신호 추가
     pauseRequested = pyqtSignal()
     stopRequested = pyqtSignal()
     
@@ -167,6 +170,23 @@ class ExecutionControlWidget(QWidget):
     def init_ui(self):
         """Initialize UI"""
         layout = QHBoxLayout()
+        
+        # Prepare button (동작 준비)
+        self.prepare_btn = QPushButton("동작 준비")
+        self.prepare_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-weight: bold;
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        self.prepare_btn.clicked.connect(self.prepareRequested.emit)
+        layout.addWidget(self.prepare_btn)
         
         # Start button
         self.start_btn = QPushButton("▶ 시작")
@@ -212,11 +232,12 @@ class ExecutionControlWidget(QWidget):
         
         self.setLayout(layout)
         
-    def set_running_state(self, is_running: bool, is_paused: bool = False):
+    def set_running_state(self, is_running: bool, is_paused: bool = False, is_preparing: bool = False):
         """Update button states"""
-        self.start_btn.setEnabled(not is_running)
+        self.prepare_btn.setEnabled(not is_running and not is_preparing)
+        self.start_btn.setEnabled(not is_running and not is_preparing)
         self.pause_btn.setEnabled(is_running)
-        self.stop_btn.setEnabled(is_running)
+        self.stop_btn.setEnabled(is_running or is_preparing)
         
         if is_paused:
             self.pause_btn.setText("▶ 재개")
@@ -244,6 +265,13 @@ class ExecutionWidget(QWidget):
         # Timer for elapsed time
         self.timer = QTimer()
         self.timer.timeout.connect(self._update_elapsed_time)
+        
+        # Preparation widget
+        self.preparation_widget = None
+        self.is_preparing = False
+        
+        # Floating status widget
+        self.floating_widget = None
         
         self.init_ui()
         self.connect_signals()
@@ -297,12 +325,14 @@ class ExecutionWidget(QWidget):
         """Connect signals"""
         # Control signals
         self.control_widget.startRequested.connect(self.start_execution)
+        self.control_widget.prepareRequested.connect(self.prepare_execution)
         self.control_widget.pauseRequested.connect(self.toggle_pause)
         self.control_widget.stopRequested.connect(self.stop_execution)
         
         # Engine signals
         self.engine.stateChanged.connect(self._on_state_changed)
         self.engine.progressUpdated.connect(self._on_progress_updated)
+        self.engine.progressInfoUpdated.connect(self._on_progress_info_updated)
         self.engine.rowCompleted.connect(self._on_row_completed)
         self.engine.stepExecuting.connect(self._on_step_executing)
         self.engine.executionFinished.connect(self._on_execution_finished)
@@ -316,6 +346,63 @@ class ExecutionWidget(QWidget):
         # Show/hide Excel-specific controls
         self.incomplete_only_checkbox.setVisible(excel_manager is not None)
         
+    def prepare_execution(self):
+        """Enter preparation mode"""
+        if not self.current_macro:
+            self.logger.warning("No macro loaded")
+            return
+            
+        # Set preparing state
+        self.is_preparing = True
+        self.control_widget.set_running_state(False, False, True)
+        
+        # Get countdown seconds from settings
+        countdown_seconds = self.settings.get("notification.preparation.countdown_seconds", 5)
+        
+        # Create preparation widget if not exists
+        if not self.preparation_widget:
+            self.preparation_widget = PreparationWidget(countdown_seconds=countdown_seconds)
+            self.preparation_widget.startNow.connect(self._on_preparation_start_now)
+            self.preparation_widget.cancelled.connect(self._on_preparation_cancelled)
+            self.preparation_widget.countdownFinished.connect(self._on_preparation_finished)
+            
+        # Connect hotkey listener for F5 during preparation
+        if hasattr(self.engine, 'hotkey_listener'):
+            self.engine.hotkey_listener.startPressed.connect(self._on_hotkey_start_pressed)
+        
+        # Minimize main window
+        main_window = self.window()
+        if main_window:
+            main_window.showMinimized()
+        
+        # Start countdown
+        self.preparation_widget.start_countdown()
+        
+    def _on_preparation_start_now(self):
+        """Handle immediate start from preparation"""
+        self.is_preparing = False
+        self.start_execution()
+        
+    def _on_preparation_cancelled(self):
+        """Handle preparation cancellation"""
+        self.is_preparing = False
+        self.control_widget.set_running_state(False, False, False)
+        
+        # Restore main window
+        main_window = self.window()
+        if main_window:
+            main_window.showNormal()
+            
+    def _on_preparation_finished(self):
+        """Handle preparation countdown finished"""
+        self.is_preparing = False
+        self.start_execution()
+        
+    def _on_hotkey_start_pressed(self):
+        """Handle F5 hotkey press"""
+        if self.is_preparing and self.preparation_widget and self.preparation_widget.isVisible():
+            self.preparation_widget.start_now()
+    
     def start_execution(self):
         """Start macro execution"""
         if not self.current_macro:
@@ -328,6 +415,24 @@ class ExecutionWidget(QWidget):
         from PyQt5.QtCore import QTime
         self.start_time = QTime.currentTime()
         self.log_widget.setRowCount(0)
+        
+        # Create and show floating widget
+        if not self.floating_widget:
+            self.floating_widget = FloatingStatusWidget()
+            self.floating_widget.pauseClicked.connect(self.toggle_pause)
+            self.floating_widget.stopClicked.connect(self.stop_execution)
+            
+            # Position at bottom right of screen
+            from PyQt5.QtWidgets import QApplication
+            screen = QApplication.primaryScreen().geometry()
+            x = screen.width() - 320
+            y = screen.height() - 120
+            self.floating_widget.show_at_position(x, y)
+        else:
+            self.floating_widget.show()
+            
+        # Set initial status
+        self.floating_widget.set_status("매크로 시작 중...", "▶")
         
         # Configure engine
         self.engine.set_macro(self.current_macro, self.excel_manager)
@@ -365,12 +470,94 @@ class ExecutionWidget(QWidget):
         is_paused = state == ExecutionState.PAUSED
         self.control_widget.set_running_state(is_running, is_paused)
         
+        # Update floating widget
+        if self.floating_widget:
+            if state == ExecutionState.RUNNING:
+                self.floating_widget.set_status("실행 중", "▶")
+                self.floating_widget.set_paused(False)
+            elif state == ExecutionState.PAUSED:
+                self.floating_widget.set_status("일시정지", "⏸")
+                self.floating_widget.set_paused(True)
+            elif state == ExecutionState.IDLE:
+                self.floating_widget.set_status("완료", "O")
+                # Show completion animation if no errors
+                if self.failed_count == 0:
+                    self.floating_widget.show_completion_animation()
+            elif state == ExecutionState.ERROR:
+                self.floating_widget.set_status("오류", "X")
+                self.floating_widget.set_error(True)
+                
+        # Update system tray
+        self._update_system_tray(state)
+        
         if not is_running:
             self.timer.stop()
+            # Hide floating widget after completion
+            if self.floating_widget and state == ExecutionState.IDLE:
+                QTimer.singleShot(3000, lambda: self.floating_widget.hide() if self.floating_widget else None)
             
     def _on_progress_updated(self, current: int, total: int):
         """Handle progress update"""
         self.status_widget.update_progress(current, total)
+        
+        # Update floating widget
+        if self.floating_widget:
+            # Determine execution mode
+            mode = ExecutionMode.EXCEL if self.excel_manager else ExecutionMode.STANDALONE
+            
+            # Calculate percentage
+            percentage = (current / total * 100) if total > 0 else 0
+            
+            # Create progress data
+            progress_data = ProgressData(
+                mode=mode,
+                percentage=percentage,
+                current_row=current if mode == ExecutionMode.EXCEL else None,
+                total_rows=total if mode == ExecutionMode.EXCEL else None,
+                current_step=current if mode == ExecutionMode.STANDALONE else None,
+                total_steps=total if mode == ExecutionMode.STANDALONE else None
+            )
+            
+            self.floating_widget.update_progress(progress_data)
+            
+        # Update system tray progress
+        self._update_tray_progress(current, total)
+            
+    def _on_progress_info_updated(self, progress_info):
+        """Handle detailed progress information update"""
+        if self.floating_widget:
+            # Convert ProgressInfo to ProgressData for floating widget
+            from automation.progress_calculator import ExecutionMode as CalcExecutionMode
+            
+            # Get display text from progress calculator
+            if hasattr(self.engine, 'progress_calculator') and self.engine.progress_calculator:
+                display_text = self.engine.progress_calculator.get_display_text(
+                    progress_info, 
+                    include_identifier=True, 
+                    include_step=True
+                )
+            else:
+                display_text = ""
+            
+            # Create progress data
+            progress_data = ProgressData(
+                mode=ExecutionMode.EXCEL if progress_info.mode == CalcExecutionMode.EXCEL else ExecutionMode.STANDALONE,
+                percentage=progress_info.percentage,
+                current_row=progress_info.current_row,
+                total_rows=progress_info.total_rows,
+                current_step=progress_info.current_step_index,
+                total_steps=progress_info.total_steps,
+                row_identifier=progress_info.row_identifier,
+                step_name=progress_info.current_step_name
+            )
+            
+            # Update floating widget
+            self.floating_widget.update_progress(progress_data)
+            
+            # Update status with detailed text
+            if progress_info.in_loop:
+                loop_text = f" (반복 {progress_info.loop_iteration}/{progress_info.loop_total})"
+                self.floating_widget.set_status(display_text + loop_text, "▶")
         
     def _on_row_completed(self, result: ExecutionResult):
         """Handle row completion"""
@@ -426,6 +613,26 @@ class ExecutionWidget(QWidget):
                 total, self.completed_count, self.failed_count, elapsed
             )
             
+            # Update floating widget time and stats
+            if self.floating_widget:
+                minutes = elapsed // 60
+                seconds = elapsed % 60
+                elapsed_str = f"{minutes:02d}:{seconds:02d}"
+                
+                # Get current progress data and update with time/stats
+                mode = ExecutionMode.EXCEL if self.excel_manager else ExecutionMode.STANDALONE
+                current_progress = self.floating_widget.progress_bar.value()
+                
+                progress_data = ProgressData(
+                    mode=mode,
+                    percentage=current_progress,
+                    elapsed_time=elapsed_str,
+                    success_count=self.completed_count,
+                    failure_count=self.failed_count
+                )
+                
+                self.floating_widget.update_progress(progress_data)
+            
     def show_log_viewer(self):
         """Show log viewer dialog"""
         from ui.dialogs.log_viewer_dialog import LogViewerDialog
@@ -460,3 +667,65 @@ class ExecutionWidget(QWidget):
                 
             # Reset log table row height
             self.log_widget.verticalHeader().setDefaultSectionSize(30)
+            
+    def _update_system_tray(self, state: ExecutionState):
+        """Update system tray based on execution state"""
+        # Get main window's tray manager
+        main_window = self.window()
+        if hasattr(main_window, 'tray_manager') and main_window.tray_manager:
+            tray_manager = main_window.tray_manager
+            
+            # Map execution state to tray state
+            state_map = {
+                ExecutionState.IDLE: "idle",
+                ExecutionState.RUNNING: "running",
+                ExecutionState.PAUSED: "paused",
+                ExecutionState.ERROR: "error",
+                ExecutionState.STOPPING: "running",
+                ExecutionState.STOPPED: "idle"
+            }
+            
+            tray_state = state_map.get(state, "idle")
+            is_running = state in [ExecutionState.RUNNING, ExecutionState.PAUSED]
+            
+            # Update tray icon and menu
+            tray_manager.set_execution_state(tray_state, is_running)
+            
+            # Update floating widget visibility in tray menu
+            if self.floating_widget:
+                tray_manager.set_floating_widget_visible(self.floating_widget.isVisible())
+                
+            # Show tray notifications
+            if self.settings.get("notification.system_tray.show_notifications", True):
+                if state == ExecutionState.RUNNING and self.is_preparing:
+                    tray_manager.show_message(
+                        "매크로 실행",
+                        f"{self.current_macro.name} 매크로 실행을 시작합니다.",
+                        duration=2000
+                    )
+                elif state == ExecutionState.IDLE and self.completed_count + self.failed_count > 0:
+                    tray_manager.show_message(
+                        "매크로 완료",
+                        f"완료: {self.completed_count}, 실패: {self.failed_count}",
+                        duration=3000
+                    )
+                elif state == ExecutionState.ERROR:
+                    tray_manager.show_message(
+                        "매크로 오류",
+                        "매크로 실행 중 오류가 발생했습니다.",
+                        QSystemTrayIcon.Critical,
+                        duration=5000
+                    )
+                    
+    def _update_tray_progress(self, current: int, total: int):
+        """Update system tray with progress"""
+        main_window = self.window()
+        if hasattr(main_window, 'tray_manager') and main_window.tray_manager:
+            percentage = int((current / total * 100)) if total > 0 else 0
+            
+            if self.excel_manager:
+                status_text = f"행 {current}/{total}"
+            else:
+                status_text = f"단계 {current}/{total}"
+                
+            main_window.tray_manager.set_progress(percentage, status_text)

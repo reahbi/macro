@@ -178,9 +178,9 @@ class TextSearchStepDialog(QDialog):
         click_group = QGroupBox("클릭 옵션")
         click_layout = QFormLayout()
         
-        self.click_after_find_check = QCheckBox("찾은 후 클릭")
-        self.click_after_find_check.setChecked(True)
-        click_layout.addRow("동작:", self.click_after_find_check)
+        self.click_on_found_check = QCheckBox("찾은 후 클릭")
+        self.click_on_found_check.setChecked(True)
+        click_layout.addRow("동작:", self.click_on_found_check)
         
         # Click type selection
         click_type_widget = QWidget()
@@ -196,7 +196,7 @@ class TextSearchStepDialog(QDialog):
         click_layout.addRow("", click_type_widget)
         
         # Enable/disable click type based on click checkbox
-        self.click_after_find_check.toggled.connect(self.click_type_combo.setEnabled)
+        self.click_on_found_check.toggled.connect(self.click_type_combo.setEnabled)
         
         # Click offset
         offset_widget = QWidget()
@@ -277,7 +277,7 @@ class TextSearchStepDialog(QDialog):
         # Set options
         self.exact_match_check.setChecked(self.step.exact_match)
         self.confidence_spin.setValue(self.step.confidence)
-        self.click_after_find_check.setChecked(self.step.click_after_find)
+        self.click_on_found_check.setChecked(self.step.click_on_found)
         self.offset_x_spin.setValue(self.step.click_offset[0])
         self.offset_y_spin.setValue(self.step.click_offset[1])
         
@@ -621,7 +621,7 @@ class TextSearchStepDialog(QDialog):
             if found_result:
                 print(f"DEBUG: Found text at {found_result.center}")
                 # Show result
-                if self.click_after_find_check.isChecked():
+                if self.click_on_found_check.isChecked():
                     # Calculate click position
                     click_x = found_result.center[0] + self.offset_x_spin.value()
                     click_y = found_result.center[1] + self.offset_y_spin.value()
@@ -699,7 +699,7 @@ class TextSearchStepDialog(QDialog):
             if found_result:
                 print(f"DEBUG: Found text at {found_result.center}")
                 # Show result
-                if self.click_after_find_check.isChecked():
+                if self.click_on_found_check.isChecked():
                     # Calculate click position
                     click_x = found_result.center[0] + self.offset_x_spin.value()
                     click_y = found_result.center[1] + self.offset_y_spin.value()
@@ -753,7 +753,7 @@ class TextSearchStepDialog(QDialog):
             'region': self.region,
             'exact_match': self.exact_match_check.isChecked(),
             'confidence': self.confidence_spin.value(),
-            'click_after_find': self.click_after_find_check.isChecked(),
+            'click_on_found': self.click_on_found_check.isChecked(),
             'click_offset': (self.offset_x_spin.value(), self.offset_y_spin.value()),
             'double_click': self.click_type_combo.currentIndex() == 1  # True if "더블 클릭" selected
         }

@@ -52,7 +52,8 @@ class TextExtractor:
         """Initialize text extractor"""
         if not hasattr(self, 'initialized'):
             self.logger = get_logger(__name__)
-            self.sct = mss.mss()
+            # Don't create mss instance here - create it when needed
+            self.sct = None
             self.initialized = True
             
             # OCR 상태 확인
@@ -104,15 +105,23 @@ class TextExtractor:
             List of TextResult objects
         """
         try:
-            # Capture screen region
-            if region:
-                x, y, width, height = region
-                monitor = {"left": x, "top": y, "width": width, "height": height}
-            else:
-                monitor = self.sct.monitors[0]  # All monitors
-                
-            # Capture screenshot
-            screenshot = self.sct.grab(monitor)
+            # Create mss instance in the same thread where it's used
+            monitor_offset_x = 0
+            monitor_offset_y = 0
+            
+            with mss.mss() as sct:
+                # Capture screen region
+                if region:
+                    x, y, width, height = region
+                    monitor = {"left": x, "top": y, "width": width, "height": height}
+                else:
+                    monitor = sct.monitors[0]  # All monitors
+                    # Store offsets for later use
+                    monitor_offset_x = monitor["left"]
+                    monitor_offset_y = monitor["top"]
+                    
+                # Capture screenshot
+                screenshot = sct.grab(monitor)
             
             # Convert to numpy array - handle import issues
             if not NUMPY_AVAILABLE:
@@ -168,11 +177,10 @@ class TextExtractor:
                         center_y += region[1]
                     else:
                         # When capturing all monitors, need to adjust for monitor offsets
-                        monitor_info = self.sct.monitors[0]
-                        min_x += monitor_info["left"]
-                        min_y += monitor_info["top"]
-                        center_x += monitor_info["left"]
-                        center_y += monitor_info["top"]
+                        min_x += monitor_offset_x
+                        min_y += monitor_offset_y
+                        center_x += monitor_offset_x
+                        center_y += monitor_offset_y
                     
                     result = TextResult(
                         text=text,

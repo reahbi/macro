@@ -17,6 +17,8 @@ class DynamicTextSearchStep(MacroStep):
     search_region: Optional[Tuple[int, int, int, int]] = None  # (x, y, width, height)
     confidence_threshold: float = 0.7
     click_on_found: bool = True
+    click_offset: Tuple[int, int] = (0, 0)  # Offset from center of found text
+    double_click: bool = False  # Whether to double click
     fail_if_not_found: bool = True
     monitor_index: Optional[int] = None  # Which monitor to search on
     mask_in_logs: bool = False  # Mask sensitive data in logs
@@ -63,6 +65,8 @@ class DynamicTextSearchStep(MacroStep):
             "search_region": list(self.search_region) if self.search_region else None,
             "confidence_threshold": self.confidence_threshold,
             "click_on_found": self.click_on_found,
+            "click_offset": list(self.click_offset),
+            "double_click": self.double_click,
             "fail_if_not_found": self.fail_if_not_found,
             "monitor_index": self.monitor_index,
             "mask_in_logs": self.mask_in_logs
@@ -72,23 +76,33 @@ class DynamicTextSearchStep(MacroStep):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'DynamicTextSearchStep':
         """Create step from dictionary"""
+        from .macro_types import ErrorHandling
+        
         region = data.get("search_region")
         if region and isinstance(region, list) and len(region) == 4:
             region = tuple(region)
         else:
             region = None
             
+        click_offset = data.get("click_offset", [0, 0])
+        if isinstance(click_offset, list) and len(click_offset) == 2:
+            click_offset = tuple(click_offset)
+        else:
+            click_offset = (0, 0)
+            
         return cls(
             step_id=data.get("step_id", str(uuid.uuid4())),
             name=data.get("name", ""),
             description=data.get("description", ""),
             enabled=data.get("enabled", True),
-            error_handling=data.get("error_handling", "stop"),
+            error_handling=ErrorHandling(data.get("error_handling", "stop")),
             retry_count=data.get("retry_count", 0),
             search_text=data.get("search_text", ""),
             search_region=region,
             confidence_threshold=data.get("confidence_threshold", 0.7),
             click_on_found=data.get("click_on_found", True),
+            click_offset=click_offset,
+            double_click=data.get("double_click", False),
             fail_if_not_found=data.get("fail_if_not_found", True),
             monitor_index=data.get("monitor_index"),
             mask_in_logs=data.get("mask_in_logs", False)

@@ -352,7 +352,7 @@ class TextSearchStep(MacroStep):
     region: Optional[tuple] = None  # (x, y, width, height)
     exact_match: bool = False
     confidence: float = 0.5
-    click_after_find: bool = True
+    click_on_found: bool = True
     click_offset: Tuple[int, int] = (0, 0)  # Offset from center of found text
     double_click: bool = False  # Whether to double click
     
@@ -372,7 +372,7 @@ class TextSearchStep(MacroStep):
             "region": list(self.region) if self.region else None,
             "exact_match": self.exact_match,
             "confidence": self.confidence,
-            "click_after_find": self.click_after_find,
+            "click_on_found": self.click_on_found,
             "click_offset": list(self.click_offset),
             "double_click": self.double_click
         })
@@ -394,7 +394,7 @@ class TextSearchStep(MacroStep):
             region=tuple(region) if region else None,
             exact_match=data.get("exact_match", False),
             confidence=data.get("confidence", 0.5),
-            click_after_find=data.get("click_after_find", True),
+            click_on_found=data.get("click_on_found", data.get("click_after_find", True)),
             click_offset=tuple(click_offset),
             double_click=data.get("double_click", False)
         )
@@ -518,7 +518,7 @@ class ImageSearchStep(MacroStep):
     image_path: str = ""
     confidence: float = 0.9
     region: Optional[tuple] = None  # (x, y, width, height)
-    click_after_find: bool = True
+    click_on_found: bool = True
     click_offset: Tuple[int, int] = (0, 0)
     double_click: bool = False
     
@@ -536,7 +536,7 @@ class ImageSearchStep(MacroStep):
             "image_path": self.image_path,
             "confidence": self.confidence,
             "region": list(self.region) if self.region else None,
-            "click_after_find": self.click_after_find,
+            "click_on_found": self.click_on_found,
             "click_offset": list(self.click_offset),
             "double_click": self.double_click
         })
@@ -556,7 +556,7 @@ class ImageSearchStep(MacroStep):
             image_path=data.get("image_path", ""),
             confidence=data.get("confidence", 0.9),
             region=tuple(region) if region else None,
-            click_after_find=data.get("click_after_find", True),
+            click_on_found=data.get("click_on_found", True),
             click_offset=tuple(click_offset),
             double_click=data.get("double_click", False)
         )

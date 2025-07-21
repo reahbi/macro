@@ -15,6 +15,7 @@ from config.settings import Settings
 from automation.executor import StepExecutor
 from automation.hotkey_listener import HotkeyListener
 from logger.execution_logger import get_execution_logger
+from automation.progress_calculator import ProgressCalculator, ExecutionMode as CalcExecutionMode, ProgressInfo
 
 class ExecutionState(Enum):
     """Execution states"""
@@ -41,6 +42,7 @@ class ExecutionEngine(QThread):
     # Signals
     stateChanged = pyqtSignal(ExecutionState)
     progressUpdated = pyqtSignal(int, int)  # current, total
+    progressInfoUpdated = pyqtSignal(ProgressInfo)  # Detailed progress info
     rowCompleted = pyqtSignal(ExecutionResult)
     stepExecuting = pyqtSignal(MacroStep, int)  # step, row_index
     executionFinished = pyqtSignal()
@@ -67,6 +69,9 @@ class ExecutionEngine(QThread):
         self.excel_manager: Optional[ExcelManager] = None
         self.target_rows: List[int] = []
         self.current_row_index: Optional[int] = None
+        
+        # Progress calculator
+        self.progress_calculator: Optional[ProgressCalculator] = None
         
         # Configure PyAutoGUI
         self._configure_pyautogui()
@@ -108,10 +113,22 @@ class ExecutionEngine(QThread):
         self.macro = macro
         self.excel_manager = excel_manager
         
+        # Debug: print macro steps
+        for i, step in enumerate(macro.steps):
+            self.logger.debug(f"Step {i+1}: {step.step_type.value}, name='{step.name}'")
+            if hasattr(step, 'search_text'):
+                self.logger.debug(f"  - search_text: '{step.search_text}'")
+            if hasattr(step, 'excel_column'):
+                self.logger.debug(f"  - excel_column: '{step.excel_column}'")
+        
         # Validate macro
         errors = macro.validate()
         if errors:
             raise ValueError(f"Macro validation failed: {', '.join(errors)}")
+            
+        # Initialize progress calculator
+        mode = CalcExecutionMode.EXCEL if excel_manager else CalcExecutionMode.STANDALONE
+        self.progress_calculator = ProgressCalculator(mode)
             
     def set_target_rows(self, row_indices: List[int]):
         """Set specific rows to execute"""
@@ -133,7 +150,7 @@ class ExecutionEngine(QThread):
             self.logger.info(f"Execution log started: {log_file}")
             
             # Determine execution mode
-            if self.excel_manager:
+            if self.excel_manager and self.excel_manager._current_data:
                 # Excel mode - execute for each row
                 if not self.target_rows:
                     # Process all incomplete rows
@@ -142,6 +159,41 @@ class ExecutionEngine(QThread):
                 total_rows = len(self.target_rows)
                 self.logger.info(f"Starting execution for {total_rows} rows")
                 
+                # If no rows to process, switch to standalone mode
+                if total_rows == 0:
+                    self.logger.info("No Excel rows to process, switching to standalone mode")
+                    self.excel_manager = None
+            else:
+                # No Excel data loaded
+                total_rows = 0
+                
+            # Initialize progress calculator with macro structure
+            if self.progress_calculator:
+                self.progress_calculator.initialize_macro(self.macro, total_rows if self.excel_manager else None)
+                
+            # Check if we should run in standalone mode
+            if not self.excel_manager or total_rows == 0:
+                # Standalone mode - execute once without Excel data
+                self.logger.info("Starting standalone macro execution")
+                total_rows = 1
+                successful_rows = 0
+                failed_rows = 0
+                
+                # Update progress
+                self.progressUpdated.emit(1, 1)
+                
+                # Execute macro without row data
+                result = self._execute_standalone()
+                
+                if result.success:
+                    successful_rows = 1
+                else:
+                    failed_rows = 1
+                    
+                # Emit result
+                self.rowCompleted.emit(result)
+            else:
+                # Excel mode with data
                 # Track statistics
                 successful_rows = 0
                 failed_rows = 0
@@ -181,27 +233,6 @@ class ExecutionEngine(QThread):
                 # Save Excel file after all rows (only if data exists)
                 if self.excel_manager and self.excel_manager._current_data:
                     self.excel_manager.save_file()
-                
-            else:
-                # Standalone mode - execute once without Excel data
-                self.logger.info("Starting standalone macro execution")
-                total_rows = 1
-                successful_rows = 0
-                failed_rows = 0
-                
-                # Update progress
-                self.progressUpdated.emit(1, 1)
-                
-                # Execute macro without row data
-                result = self._execute_standalone()
-                
-                if result.success:
-                    successful_rows = 1
-                else:
-                    failed_rows = 1
-                    
-                # Emit result
-                self.rowCompleted.emit(result)
             
             # Log session summary
             self.execution_logger.log_session_end(
@@ -235,6 +266,10 @@ class ExecutionEngine(QThread):
             # Log row start
             self.execution_logger.log_row_start(row_index, row_data)
             
+            # Progress calculator: start row
+            if self.progress_calculator:
+                self.progress_calculator.start_row(row_index, row_data)
+            
             # Set variables in executor context
             self.step_executor.set_variables(row_data)
             
@@ -254,6 +289,12 @@ class ExecutionEngine(QThread):
                 # Emit step executing signal
                 self.stepExecuting.emit(step, row_index)
                 
+                # Progress calculator: start step
+                if self.progress_calculator:
+                    self.progress_calculator.start_step(step, step_index)
+                    progress_info = self.progress_calculator.calculate_progress()
+                    self.progressInfoUpdated.emit(progress_info)
+                
                 # Execute step
                 step_start_time = time.time()
                 step_success = False
@@ -262,6 +303,10 @@ class ExecutionEngine(QThread):
                 try:
                     self.step_executor.execute_step(step)
                     step_success = True
+                    
+                    # Progress calculator: complete step
+                    if self.progress_calculator:
+                        self.progress_calculator.complete_step(step)
                 except Exception as e:
                     error_msg = f"Step '{step.name}' failed: {str(e)}"
                     self.logger.error(error_msg)
@@ -307,6 +352,10 @@ class ExecutionEngine(QThread):
                     step_success, step_duration, step_error
                 )
                     
+            # Progress calculator: complete row
+            if self.progress_calculator:
+                self.progress_calculator.complete_row(row_index)
+                
             duration_ms = (time.time() - start_time) * 1000
             self.execution_logger.log_row_complete(row_index, True, duration_ms)
             return ExecutionResult(row_index, True, None, duration_ms)
@@ -343,6 +392,12 @@ class ExecutionEngine(QThread):
                 # Emit step executing signal
                 self.stepExecuting.emit(step, 0)
                 
+                # Progress calculator: start step
+                if self.progress_calculator:
+                    self.progress_calculator.start_step(step, step_index)
+                    progress_info = self.progress_calculator.calculate_progress()
+                    self.progressInfoUpdated.emit(progress_info)
+                
                 # Execute step
                 step_start_time = time.time()
                 step_success = False
@@ -351,6 +406,10 @@ class ExecutionEngine(QThread):
                 try:
                     self.step_executor.execute_step(step)
                     step_success = True
+                    
+                    # Progress calculator: complete step
+                    if self.progress_calculator:
+                        self.progress_calculator.complete_step(step)
                 except Exception as e:
                     error_msg = f"Step '{step.name}' failed: {str(e)}"
                     self.logger.error(error_msg)

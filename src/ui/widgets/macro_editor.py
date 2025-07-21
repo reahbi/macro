@@ -501,7 +501,7 @@ class MacroFlowWidget(QWidget):
                     step.image_path = step_data['image_path']
                     step.confidence = step_data['confidence']
                     step.region = step_data['region']
-                    step.click_after_find = step_data.get('click_after_find', True)
+                    step.click_on_found = step_data.get('click_on_found', True)
                     step.click_offset = step_data.get('click_offset', (0, 0))
                     step.double_click = step_data.get('double_click', False)
                     self._rebuild_ui()
@@ -527,10 +527,11 @@ class MacroFlowWidget(QWidget):
                     step.name = step_data['name']
                     step.search_text = step_data['search_text']
                     step.excel_column = step_data['excel_column']
+                    print(f"DEBUG: Updated TextSearchStep - search_text='{step.search_text}', excel_column='{step.excel_column}'")
                     step.region = step_data['region']
                     step.exact_match = step_data['exact_match']
                     step.confidence = step_data['confidence']
-                    step.click_after_find = step_data['click_after_find']
+                    step.click_on_found = step_data['click_on_found']
                     step.click_offset = step_data['click_offset']
                     step.double_click = step_data.get('double_click', False)
                     self._rebuild_ui()

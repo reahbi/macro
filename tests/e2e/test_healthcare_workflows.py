@@ -95,14 +95,14 @@ class TestHealthcareCheckupWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="환자번호 입력",
-                search_text="${환자번호}"
+                text="${환자번호}"
             ),
             
             # 3. Press Enter
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="Enter 키",
-                search_text="{ENTER}"
+                text="{ENTER}"
             ),
             
             # 4. Wait for loading
@@ -132,8 +132,8 @@ class TestHealthcareCheckupWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="혈압 입력",
-                search_text="${혈압}"
-            ),
+                text="${혈압}"
+            )
             
             # 8. Click blood sugar field
             MouseClickStep(
@@ -147,8 +147,8 @@ class TestHealthcareCheckupWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="혈당 입력",
-                search_text="${혈당}"
-            ),
+                text="${혈당}"
+            )
             
             # 10. Click cholesterol field
             MouseClickStep(
@@ -162,8 +162,8 @@ class TestHealthcareCheckupWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="콜레스테롤 입력",
-                search_text="${콜레스테롤}"
-            ),
+                text="${콜레스테롤}"
+            )
             
             # 12. Click judgment field
             MouseClickStep(
@@ -304,7 +304,7 @@ class TestHealthcareCheckupWorkflow:
                 KeyboardTypeStep(
                     step_id=str(uuid.uuid4()),
                     name="사유 입력",
-                    search_text="정밀검사 필요"
+                    text="정밀검사 필요"
                 )
             ],
             false_steps=[]
@@ -356,7 +356,7 @@ class TestPrescriptionWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="환자번호 입력",
-                search_text="${환자번호}"
+                text="${환자번호}"
             ),
             
             # 3. Wait
@@ -378,22 +378,22 @@ class TestPrescriptionWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="약품코드1 입력",
-                search_text="${약품코드1}"
-            ),
+                text="${약품코드1}"
+            )
             
             # 6. Tab key
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="Tab 키",
-                search_text="{TAB}"
-            ),
+                text="{TAB}"
+            )
             
             # 7. Type dosage 1
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="용량1 입력",
-                search_text="${용량1}"
-            ),
+                text="${용량1}"
+            )
             
             # 8. Add button
             DynamicTextSearchStep(
@@ -418,17 +418,17 @@ class TestPrescriptionWorkflow:
                     KeyboardTypeStep(
                         step_id=str(uuid.uuid4()),
                         name="약품코드2 입력",
-                        search_text="${약품코드2}"
+                        text="${약품코드2}"
                     ),
                     KeyboardTypeStep(
                         step_id=str(uuid.uuid4()),
                         name="Tab 키2",
-                        search_text="{TAB}"
+                        text="{TAB}"
                     ),
                     KeyboardTypeStep(
                         step_id=str(uuid.uuid4()),
                         name="용량2 입력",
-                        search_text="${용량2}"
+                        text="${용량2}"
                     ),
                     DynamicTextSearchStep(
                         step_id=str(uuid.uuid4()),
@@ -452,8 +452,8 @@ class TestPrescriptionWorkflow:
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="일수 입력",
-                search_text="${일수}"
-            ),
+                text="${일수}"
+            )
             
             # 12. Save prescription
             DynamicTextSearchStep(
