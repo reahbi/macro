@@ -613,9 +613,9 @@ class TextSearchStepDialog(QDialog):
             # Find matching text
             found_result = self.text_extractor.find_text(
                 search_text,
-                self.region,
-                self.exact_match_check.isChecked(),
-                self.confidence_spin.value()
+                region=self.region,
+                exact_match=self.exact_match_check.isChecked(),
+                confidence_threshold=self.confidence_spin.value()
             )
             
             if found_result:
@@ -691,9 +691,9 @@ class TextSearchStepDialog(QDialog):
             # Find matching text
             found_result = self.text_extractor.find_text(
                 search_text,
-                self.region,
-                self.exact_match_check.isChecked(),
-                self.confidence_spin.value()
+                region=self.region,
+                exact_match=self.exact_match_check.isChecked(),
+                confidence_threshold=self.confidence_spin.value()
             )
             
             if found_result:

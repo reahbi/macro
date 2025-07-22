@@ -48,7 +48,7 @@ class DataPreviewTable(QTableWidget):
         # Find status column
         status_col_idx = None
         if highlight_status:
-            status_columns = ['상태', 'Status', '완료여부', '처리상태', 'status', 'STATUS']
+            status_columns = ['매크로_상태', '상태', 'Status', '완료여부', '처리상태', 'status', 'STATUS']
             for idx, col in enumerate(columns):
                 if col in status_columns:
                     status_col_idx = idx
@@ -186,7 +186,13 @@ class DataPreviewWidget(QWidget):
         
         # Apply incomplete filter
         if self.incomplete_only.isChecked():
-            status_col = self.excel_data.get_status_column()
+            # First try to find 매크로_상태 column, then fall back to get_status_column
+            status_col = None
+            if '매크로_상태' in df.columns:
+                status_col = '매크로_상태'
+            else:
+                status_col = self.excel_data.get_status_column()
+            
             if status_col:
                 mask &= ~df[status_col].isin(['완료', 'Completed', 'Complete', 'Done'])
         

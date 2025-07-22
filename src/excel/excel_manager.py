@@ -235,6 +235,27 @@ class ExcelManager:
         if save_immediately:
             self.save_file()
     
+    def update_all_rows_status(self, status: str, save_immediately: bool = False):
+        """Update status for all rows"""
+        if not self._current_data:
+            raise ValueError("No data loaded")
+        
+        if self._current_data._status_column:
+            self._current_data.dataframe[self._current_data._status_column] = status
+        
+        if save_immediately:
+            self.save_file()
+            
+    def reset_all_status(self, save_immediately: bool = False):
+        """Reset all rows to pending status"""
+        from .models import MacroStatus
+        self.update_all_rows_status(MacroStatus.PENDING, save_immediately)
+        
+    def complete_all_status(self, save_immediately: bool = False):
+        """Mark all rows as completed"""
+        from .models import MacroStatus
+        self.update_all_rows_status(MacroStatus.COMPLETED, save_immediately)
+    
     def get_pending_rows(self) -> List[int]:
         """Get list of row indices that need processing"""
         if not self._current_data:
@@ -264,3 +285,21 @@ class ExcelManager:
     def add_mapping(self, variable: str, column: str):
         """변수와 컬럼 매핑 추가"""
         self.mappings[variable] = column
+    
+    def set_active_sheet(self, sheet_name: str):
+        """Set the active sheet for operations"""
+        if not self._current_file:
+            raise ValueError("No Excel file loaded")
+        
+        # Read the sheet data
+        self.read_sheet(sheet_name)
+        
+        # Also update the df property for simple access
+        self.df = pd.read_excel(self._current_file, sheet_name=sheet_name)
+        self.logger.info(f"Active sheet set to: {sheet_name}")
+    
+    def get_sheet_data(self) -> Optional[pd.DataFrame]:
+        """Get the current sheet data as DataFrame"""
+        if self._current_data:
+            return self._current_data.dataframe
+        return self.df

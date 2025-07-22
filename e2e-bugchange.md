@@ -182,3 +182,33 @@
 ### 권장사항
 1. Python 3.11 이하 버전에서 완전한 E2E 테스트 실행 권장
 2. 또는 cryptography 모듈을 Python 3.13 호환 버전으로 업그레이드 필요
+
+---
+
+## 2025-01-21 추가 수정 사항 (Phase 1-4 완료)
+
+### Phase 1: 기본 파라미터 오류 수정
+1. **DynamicTextSearchStep**: `click_after_find` 폴백 처리 확인 (이미 구현됨)
+2. **IfConditionStep**: `condition_type`, `condition_value` 파라미터 사용 확인
+3. **KeyboardTypeStep**: `text` 파라미터 사용 확인
+
+### Phase 2: UI 다이얼로그 파라미터 일관성 수정
+1. **text_search_step_dialog.py**: `click_on_found_check` 사용 확인 (이미 올바름)
+2. **image_step_dialog.py**: `click_on_found_check` 사용 확인 (이미 올바름)
+
+### Phase 3: 테스트 코드 파라미터 수정
+1. **test_healthcare_workflows.py**: 
+   - ScreenshotStep의 `save_path` → `filename_pattern`, `save_directory`로 수정 완료
+   - 다른 Step들은 이미 올바른 파라미터 사용 중
+
+### Phase 4: 추가 버그 수정 및 검증
+1. **Python 3.13 호환성 requirements 파일 생성**: `requirements_py313.txt` 생성 완료
+2. **pytest 마커 설정**: pytest.ini에 이미 올바르게 설정됨
+3. **테스트 실행 스크립트 개선**: UTF-8 인코딩 지원 강화
+4. **배치 파일 업데이트**: `RUN_WORKFLOW_TESTS.bat`에 UTF-8 지원 추가
+
+### 최종 상태
+- 모든 파라미터 불일치 문제 해결
+- 테스트 코드와 실제 코드 간의 일관성 확보
+- Python 3.13 환경에서의 제한적 테스트 지원
+- UTF-8 한글 인코딩 문제 해결

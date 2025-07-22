@@ -51,7 +51,7 @@ echo.
 
 REM 호환성 빠른 검사
 echo 호환성 검사 중...
-python -c "import numpy; import cv2; print(f'✓ NumPy {numpy.__version__}')" 2>nul
+python -c "import numpy; import cv2; print(f'[OK] NumPy {numpy.__version__}')" 2>nul
 if errorlevel 1 (
     echo [경고] NumPy/OpenCV 호환성 문제 감지
     echo.
@@ -78,9 +78,9 @@ if errorlevel 1 (
 REM EasyOCR 확인 (선택사항)
 python -c "import easyocr" 2>nul
 if errorlevel 1 (
-    echo ✗ EasyOCR 없음 (텍스트 인식 기능 제한)
+    echo [X] EasyOCR 없음 (텍스트 인식 기능 제한)
 ) else (
-    echo ✓ EasyOCR 사용 가능
+    echo [OK] EasyOCR 사용 가능
 )
 
 REM 프로그램 실행

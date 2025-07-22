@@ -4,7 +4,27 @@
       "Bash(python -m pytest tests/unit/ -x --tb=short -q)",
       "Bash(rm:*)",
       "Bash(python:*)",
-      "Bash(set PYTHONIOENCODING=utf-8)"
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(ls:*)",
+      "mcp__server-sequential-thinking__sequentialthinking",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)",
+      "Bash(venv313Scriptsactivate:*)",
+      "Bash(venv313\\\\Scripts\\\\python.exe -m pip install:*)",
+      "Bash(C:\\mag\\macro\\venv313\\Scripts\\python.exe -m pip install --upgrade pip)",
+      "Bash(C:/mag/macro/venv313/Scripts/pip.exe install --upgrade pip)",
+      "Bash(C:/mag/macro/venv313/Scripts/pip.exe install -r requirements_py313.txt)",
+      "Bash(C:/mag/macro/venv313/Scripts/python.exe -c \"import numpy, cv2, easyocr, torch; print(f''NumPy: {numpy.__version__}''); print(f''OpenCV: {cv2.__version__}''); print(f''PyTorch: {torch.__version__}''); print(f''CUDA available: {torch.cuda.is_available()}'')\")",
+      "Bash(C:/mag/macro/venv313/Scripts/python.exe run_workflow_tests.py -v)",
+      "Bash(C:/mag/macro/venv313/Scripts/pip.exe install pytest pytest-timeout)",
+      "Bash(C:/mag/macro/venv313/Scripts/python.exe test_ocr_opencv.py)",
+      "Bash(find:*)",
+      "Bash(wmic:*)",
+      "Bash(dir:*)",
+      "Bash(attrib:*)",
+      "Bash(del test_new_ui.py check_ui_structure.py)",
+      "Bash(grep:*)",
+      "Bash(true)"
     ],
     "deny": []
   }

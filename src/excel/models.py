@@ -7,6 +7,14 @@ from typing import List, Dict, Any, Optional
 from enum import Enum
 import pandas as pd
 
+# Status values for macro execution
+class MacroStatus:
+    """Constants for macro execution status"""
+    PENDING = ""          # Not processed (empty string)
+    PROCESSING = "처리중"  # Currently processing
+    COMPLETED = "완료"     # Successfully completed
+    ERROR = "오류"        # Error occurred
+
 class ColumnType(Enum):
     """Excel column data types"""
     TEXT = "text"
@@ -58,7 +66,11 @@ class ExcelData:
         self.dataframe = dataframe
         self.sheet_name = sheet_name
         self.file_path = file_path
-        self._status_column = None
+        # Set default status column to 매크로_상태 if it exists
+        if "매크로_상태" in dataframe.columns:
+            self._status_column = "매크로_상태"
+        else:
+            self._status_column = None
         
     @property
     def row_count(self) -> int:

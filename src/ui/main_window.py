@@ -25,6 +25,9 @@ class MainWindow(QMainWindow):
         self.settings = settings
         self.logger = get_logger(__name__)
         
+        # Workflow mode - Removed as per improvement plan
+        # self.is_excel_workflow_mode = False
+        
         # Macro storage
         self.macro_storage = MacroStorage()
         self.current_macro_path: Optional[str] = None
@@ -40,6 +43,9 @@ class MainWindow(QMainWindow):
         # Apply compact mode if enabled
         if self.settings.get("ui.compact_mode", False):
             self.apply_compact_mode(True)
+            
+        # Show workflow mode selection on startup - Removed as per improvement plan
+        # QTimer.singleShot(100, self.show_workflow_mode_selection)
         
     def init_ui(self):
         """Initialize user interface"""
@@ -60,9 +66,10 @@ class MainWindow(QMainWindow):
         self.tab_widget = QTabWidget()
         layout.addWidget(self.tab_widget)
         
-        # Add Excel widget
-        from ui.widgets.excel_widget import ExcelWidget
-        self.excel_widget = ExcelWidget()
+        # Add Excel widget - Using redesigned version
+        from ui.widgets.excel_widget_redesigned import ExcelWidgetRedesigned
+        self.excel_widget = ExcelWidgetRedesigned()
+        self.excel_widget.tabSwitchRequested.connect(self.tab_widget.setCurrentIndex)
         self.tab_widget.addTab(self.excel_widget, "Excel")
         
         # Add Macro Editor widget
@@ -732,6 +739,85 @@ class MainWindow(QMainWindow):
         if self.tray_manager and self.tray_manager.tray_icon:
             self.tray_manager.hide()
             
+    # Workflow mode selection - Removed as per improvement plan
+    # def show_workflow_mode_selection(self):
+    #     """Show workflow mode selection dialog on startup"""
+    #     from ui.dialogs.workflow_mode_dialog import WorkflowModeDialog
+    #     
+    #     dialog = WorkflowModeDialog(self)
+    #     dialog.excel_mode_selected.connect(self.on_excel_mode_selected)
+    #     dialog.normal_mode_selected.connect(self.on_normal_mode_selected)
+    #     dialog.exec_()
+    #     
+    # def on_excel_mode_selected(self):
+    #     """Handle Excel workflow mode selection"""
+    #     self.is_excel_workflow_mode = True
+    #     self.logger.info("Excel workflow mode selected")
+    #     
+    #     # Start Excel workflow wizard
+    #     self.start_excel_workflow_wizard()
+    #     
+    # def on_normal_mode_selected(self):
+    #     """Handle normal macro mode selection"""
+    #     self.is_excel_workflow_mode = False
+    #     self.logger.info("Normal macro mode selected")
+    #     
+    #     # Continue with normal UI
+    #     # Tab widget is already set up, no special action needed
+    
+    # Excel workflow wizard - Removed as per improvement plan    
+    # def start_excel_workflow_wizard(self):
+    #     """Start the Excel workflow wizard"""
+    #     from ui.dialogs.excel_workflow_wizard import ExcelWorkflowWizard
+    #     
+    #     wizard = ExcelWorkflowWizard(self)
+    #     if wizard.exec_():
+    #         # Wizard completed successfully
+    #         excel_file = wizard.get_excel_file()
+    #         column_mappings = wizard.get_column_mappings()
+    #         workflow_steps = wizard.get_workflow_steps()
+    #         
+    #         # Load Excel file
+    #         if excel_file:
+    #             self.excel_widget.load_file(excel_file)
+    #             
+    #         # Apply column mappings
+    #         if column_mappings:
+    #             self.excel_widget.set_column_mappings(column_mappings)
+    #             
+    #         # Create macro from workflow steps
+    #         if workflow_steps:
+    #             self.create_workflow_macro(workflow_steps)
+    #             
+    # def create_workflow_macro(self, workflow_steps):
+    #     """Create a macro from workflow wizard steps"""
+    #     from core.macro_types import Macro, LoopStep
+    #     import uuid
+    #     
+    #     # Create new macro
+    #     macro = Macro(
+    #         name="Excel 워크플로우",
+    #         description="Excel 데이터 기반 반복 작업"
+    #     )
+    #     
+    #     # Create main loop for Excel rows
+    #     loop_step = LoopStep(
+    #         step_id=str(uuid.uuid4()),
+    #         name="Excel 데이터 반복",
+    #         loop_type="excel_rows"
+    #     )
+    #     
+    #     # Add workflow steps to loop
+    #     loop_step.steps = workflow_steps
+    #     
+    #     # Add loop to macro
+    #     macro.add_step(loop_step)
+    #     
+    #     # Set macro in editor
+    #     self.macro_editor.set_macro(macro)
+    #     
+    #     # Switch to editor tab
+    #     self.tab_widget.setCurrentIndex(1)  # Editor tab
     def close(self):
         """Override close to handle quit from tray"""
         self._quit_requested = True

@@ -8,8 +8,8 @@ PyQt5>=5.15.0
 # Data Processing
 pandas>=2.0.0
 openpyxl>=3.0.0
-# NumPy 2.3.0+ supports Python 3.13
-numpy==2.3.0
+# NumPy 2.2.1 for OpenCV compatibility with Python 3.13
+numpy>=2.0.0,<2.3.0
 
 # Screen Automation
 pyautogui>=0.9.53

@@ -301,8 +301,20 @@ class ExecutionEngine(QThread):
                 step_error = ""
                 
                 try:
-                    self.step_executor.execute_step(step)
-                    step_success = True
+                    # Special handling for LoopStep
+                    if step.step_type == StepType.LOOP and hasattr(step, 'loop_type'):
+                        if step.loop_type == "excel_rows" and step.excel_rows:
+                            # Execute loop for each Excel row
+                            self._execute_excel_loop(step, row_index)
+                            step_success = True
+                        else:
+                            # Regular loop execution (count, etc.)
+                            self.step_executor.execute_step(step)
+                            step_success = True
+                    else:
+                        # Regular step execution
+                        self.step_executor.execute_step(step)
+                        step_success = True
                     
                     # Progress calculator: complete step
                     if self.progress_calculator:
@@ -464,6 +476,76 @@ class ExecutionEngine(QThread):
             self.execution_logger.log_row_complete(0, False, duration_ms, str(e))
             return ExecutionResult(0, False, str(e), duration_ms)
             
+    def _execute_excel_loop(self, loop_step, parent_row_index: int):
+        """Execute loop for each Excel row"""
+        if not self.excel_manager or not loop_step.excel_rows:
+            self.logger.warning("No Excel data available for loop execution")
+            return
+            
+        # Get the nested steps that need to be executed
+        nested_steps = []
+        for step_id in loop_step.loop_steps:
+            # Find the step by ID in the macro
+            for step in self.macro.steps:
+                if step.step_id == step_id:
+                    nested_steps.append(step)
+                    break
+                    
+        if not nested_steps:
+            self.logger.warning("No nested steps found in loop")
+            return
+            
+        # Save current variables
+        original_variables = self.step_executor.variables.copy()
+        
+        try:
+            # Execute nested steps for each Excel row
+            for excel_row_index in loop_step.excel_rows:
+                # Check if stopping
+                if self.state == ExecutionState.STOPPING:
+                    break
+                    
+                # Update current row in loop step
+                loop_step.current_row_index = excel_row_index
+                
+                # Get row data for this specific row
+                row_data = self.excel_manager.get_mapped_data(excel_row_index)
+                
+                # Merge with original variables (Excel data takes precedence)
+                merged_variables = original_variables.copy()
+                merged_variables.update(row_data)
+                merged_variables['현재행'] = excel_row_index + 1  # 1-based for user display
+                merged_variables['총행수'] = len(loop_step.excel_rows)
+                
+                # Set variables for this iteration
+                self.step_executor.set_variables(merged_variables)
+                
+                self.logger.info(f"Executing loop iteration for Excel row {excel_row_index + 1}")
+                
+                # Execute each nested step
+                for nested_step in nested_steps:
+                    if not nested_step.enabled:
+                        continue
+                        
+                    # Handle pause
+                    self._pause_event.wait()
+                    
+                    try:
+                        self.step_executor.execute_step(nested_step)
+                    except Exception as e:
+                        error_msg = f"Loop step '{nested_step.name}' failed for row {excel_row_index + 1}: {str(e)}"
+                        self.logger.error(error_msg)
+                        
+                        # Handle error based on step configuration
+                        if nested_step.error_handling.value == "stop":
+                            raise Exception(error_msg)
+                        # For "continue", just log and proceed to next step/row
+                        
+        finally:
+            # Restore original variables
+            self.step_executor.set_variables(original_variables)
+            loop_step.current_row_index = None
+    
     def toggle_pause(self):
         """Toggle pause state"""
         if self.state == ExecutionState.RUNNING:

@@ -6,7 +6,8 @@ from typing import Optional
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QProgressBar, QTableWidget, QTableWidgetItem, QGroupBox,
-    QTextEdit, QSplitter, QHeaderView, QCheckBox, QSystemTrayIcon
+    QTextEdit, QSplitter, QHeaderView, QCheckBox, QSystemTrayIcon,
+    QMessageBox
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QColor, QBrush, QFont

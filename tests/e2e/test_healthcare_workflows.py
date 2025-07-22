@@ -133,7 +133,7 @@ class TestHealthcareCheckupWorkflow:
                 step_id=str(uuid.uuid4()),
                 name="혈압 입력",
                 text="${혈압}"
-            )
+            ),
             
             # 8. Click blood sugar field
             MouseClickStep(
@@ -148,7 +148,7 @@ class TestHealthcareCheckupWorkflow:
                 step_id=str(uuid.uuid4()),
                 name="혈당 입력",
                 text="${혈당}"
-            )
+            ),
             
             # 10. Click cholesterol field
             MouseClickStep(
@@ -163,7 +163,7 @@ class TestHealthcareCheckupWorkflow:
                 step_id=str(uuid.uuid4()),
                 name="콜레스테롤 입력",
                 text="${콜레스테롤}"
-            )
+            ),
             
             # 12. Click judgment field
             MouseClickStep(
@@ -292,7 +292,8 @@ class TestHealthcareCheckupWorkflow:
         condition_step = IfConditionStep(
             step_id=str(uuid.uuid4()),
             name="재검 여부 확인",
-            condition="${판정} == '재검'",
+            condition_type="variable_equals",
+            condition_value={"variable": "판정", "value": "재검"},
             true_steps=[
                 # Additional steps for re-examination
                 DynamicTextSearchStep(
@@ -379,21 +380,21 @@ class TestPrescriptionWorkflow:
                 step_id=str(uuid.uuid4()),
                 name="약품코드1 입력",
                 text="${약품코드1}"
-            )
+            ),
             
             # 6. Tab key
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="Tab 키",
                 text="{TAB}"
-            )
+            ),
             
             # 7. Type dosage 1
             KeyboardTypeStep(
                 step_id=str(uuid.uuid4()),
                 name="용량1 입력",
                 text="${용량1}"
-            )
+            ),
             
             # 8. Add button
             DynamicTextSearchStep(
@@ -453,7 +454,7 @@ class TestPrescriptionWorkflow:
                 step_id=str(uuid.uuid4()),
                 name="일수 입력",
                 text="${일수}"
-            )
+            ),
             
             # 12. Save prescription
             DynamicTextSearchStep(
@@ -467,7 +468,8 @@ class TestPrescriptionWorkflow:
             ScreenshotStep(
                 step_id=str(uuid.uuid4()),
                 name="처방전 캡처",
-                save_path="captures/prescription_${환자번호}.png"
+                filename_pattern="prescription_${환자번호}.png",
+                save_directory="captures/"
             ),
             
             # 14. Print button

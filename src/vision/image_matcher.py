@@ -145,7 +145,8 @@ class ImageMatcher:
                    confidence: float = 0.9,
                    region: Optional[Tuple[int, int, int, int]] = None,
                    monitor_index: Optional[int] = None,
-                   grayscale: bool = True) -> MatchResult:
+                   grayscale: bool = True,
+                   multi_scale: bool = False) -> MatchResult:
         """Find image on screen using template matching"""
         
         try:
@@ -153,50 +154,103 @@ class ImageMatcher:
             scale = 1.0
             if monitor_index is not None and 0 <= monitor_index < len(self._monitors):
                 scale = self._monitors[monitor_index].scale
+            
+            if multi_scale:
+                # Multi-scale template matching
+                scales = [0.8, 0.9, 1.0, 1.1, 1.2]  # Scale factors to try
+                best_match = MatchResult(found=False, confidence=0.0)
                 
-            # Load template
-            template = self._load_template(template_path, scale)
-            
-            # Capture screen
-            screenshot = self._capture_screen(region, monitor_index)
-            
-            # Convert to grayscale if needed
-            if grayscale:
-                screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-            else:
-                screenshot_gray = screenshot
-                
-            # Perform template matching
-            result = cv2.matchTemplate(screenshot_gray, template, cv2.TM_CCOEFF_NORMED)
-            
-            # Find best match
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            
-            if max_val >= confidence:
-                # Calculate absolute coordinates
-                h, w = template.shape[:2]
-                x, y = max_loc
-                
-                # Adjust for region offset if applicable
-                if region:
-                    x += region[0]
-                    y += region[1]
-                elif monitor_index is not None:
-                    mon_info = self._monitors[monitor_index]
-                    x += mon_info.left
-                    y += mon_info.top
+                for scale_factor in scales:
+                    # Load template at current scale
+                    template = self._load_template(template_path, scale * scale_factor)
                     
-                location = (x, y, w, h)
-                center = (x + w // 2, y + h // 2)
+                    # Capture screen
+                    screenshot = self._capture_screen(region, monitor_index)
+                    
+                    # Convert to grayscale if needed
+                    if grayscale:
+                        screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+                    else:
+                        screenshot_gray = screenshot
+                    
+                    # Perform template matching
+                    result = cv2.matchTemplate(screenshot_gray, template, cv2.TM_CCOEFF_NORMED)
+                    
+                    # Find best match
+                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                    
+                    if max_val >= confidence and max_val > best_match.confidence:
+                        # Found better match
+                        h, w = template.shape[:2]
+                        x, y = max_loc
+                        
+                        # Adjust for region offset if applicable
+                        if region:
+                            x += region[0]
+                            y += region[1]
+                        elif monitor_index is not None:
+                            mon_info = self._monitors[monitor_index]
+                            x += mon_info.left
+                            y += mon_info.top
+                        
+                        location = (x, y, w, h)
+                        center = (x + w // 2, y + h // 2)
+                        
+                        best_match = MatchResult(
+                            found=True,
+                            confidence=max_val,
+                            location=location,
+                            center=center
+                        )
+                        
+                        self.logger.debug(f"Found match at scale {scale_factor} with confidence {max_val}")
                 
-                return MatchResult(
-                    found=True,
-                    confidence=max_val,
-                    location=location,
-                    center=center
-                )
+                return best_match
             else:
-                return MatchResult(found=False, confidence=max_val)
+                # Single-scale template matching (original code)
+                # Load template
+                template = self._load_template(template_path, scale)
+                
+                # Capture screen
+                screenshot = self._capture_screen(region, monitor_index)
+                
+                # Convert to grayscale if needed
+                if grayscale:
+                    screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+                else:
+                    screenshot_gray = screenshot
+                    
+                # Perform template matching
+                result = cv2.matchTemplate(screenshot_gray, template, cv2.TM_CCOEFF_NORMED)
+                
+                # Find best match
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                
+                if max_val >= confidence:
+                    # Calculate absolute coordinates
+                    h, w = template.shape[:2]
+                    x, y = max_loc
+                    
+                    # Adjust for region offset if applicable
+                    if region:
+                        x += region[0]
+                        y += region[1]
+                    elif monitor_index is not None:
+                        mon_info = self._monitors[monitor_index]
+                        x += mon_info.left
+                        y += mon_info.top
+                        
+                    location = (x, y, w, h)
+                    center = (x + w // 2, y + h // 2)
+                    
+                    return MatchResult(
+                        found=True,
+                        confidence=max_val,
+                        location=location,
+                        center=center
+                    )
+                else:
+                    return MatchResult(found=False, confidence=max_val)
                 
         except Exception as e:
             self.logger.error(f"Error in find_image: {e}")
@@ -260,13 +314,14 @@ class ImageMatcher:
                       timeout: float = 30.0,
                       confidence: float = 0.9,
                       region: Optional[Tuple[int, int, int, int]] = None,
-                      check_interval: float = 0.5) -> MatchResult:
+                      check_interval: float = 0.5,
+                      multi_scale: bool = False) -> MatchResult:
         """Wait for image to appear on screen"""
         
         start_time = time.time()
         
         while time.time() - start_time < timeout:
-            result = self.find_image(template_path, confidence, region)
+            result = self.find_image(template_path, confidence, region, multi_scale=multi_scale)
             
             if result.found:
                 return result

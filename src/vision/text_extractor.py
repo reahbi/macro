@@ -79,7 +79,19 @@ class TextExtractor:
                 self.logger.info("Initializing EasyOCR reader with Korean and English support...")
                 # Initialize with Korean and English
                 # Set download_enabled=True to auto-download models if needed
-                TextExtractor._reader = easyocr.Reader(['ko', 'en'], gpu=False, download_enabled=True)
+                # Auto-detect GPU availability
+                try:
+                    import torch
+                    gpu_available = torch.cuda.is_available()
+                    if gpu_available:
+                        self.logger.info("GPU detected! Enabling GPU acceleration for EasyOCR")
+                    else:
+                        self.logger.info("No GPU detected. Using CPU for EasyOCR")
+                except ImportError:
+                    gpu_available = False
+                    self.logger.info("PyTorch not available for GPU detection. Using CPU")
+                
+                TextExtractor._reader = easyocr.Reader(['ko', 'en'], gpu=gpu_available, download_enabled=True)
                 self.logger.info("EasyOCR reader initialized successfully")
             except Exception as e:
                 self.logger.error(f"Failed to initialize EasyOCR: {e}")
@@ -198,7 +210,8 @@ class TextExtractor:
             return []
     
     def find_text(self, target_text: str, region: Optional[Tuple[int, int, int, int]] = None,
-                  exact_match: bool = False, confidence_threshold: float = 0.5) -> Optional[TextResult]:
+                  exact_match: bool = False, confidence_threshold: float = 0.5, 
+                  confidence: float = None) -> Optional[TextResult]:
         """
         Find specific text in screen region
         
@@ -207,10 +220,15 @@ class TextExtractor:
             region: (x, y, width, height) or None for full screen
             exact_match: If True, requires exact match. If False, allows partial match
             confidence_threshold: Minimum OCR confidence
+            confidence: Deprecated parameter, use confidence_threshold instead
             
         Returns:
             TextResult if found, None otherwise
         """
+        # Handle backward compatibility - if confidence is passed, use it
+        if confidence is not None:
+            confidence_threshold = confidence
+            
         try:
             # Extract all text from region
             text_results = self.extract_text_from_region(region, confidence_threshold)
