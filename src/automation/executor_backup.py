@@ -336,103 +336,103 @@ class StepExecutor:
             step_class_name = step.__class__.__name__
             
             if step_class_name == "DynamicTextSearchStep":
-                # DynamicTextSearchStep attributes
-                search_text = getattr(step, 'search_text', '')
-                region = getattr(step, 'search_region', None)
-                confidence = getattr(step, 'confidence_threshold', 0.7)
-                click_on_found = getattr(step, 'click_on_found', True)
-                fail_if_not_found = getattr(step, 'fail_if_not_found', True)
-                mask_in_logs = getattr(step, 'mask_in_logs', False)
-                click_offset = getattr(step, 'click_offset', (0, 0))
-                double_click = getattr(step, 'double_click', False)
-            elif step_class_name == "TextSearchStep":
-                # TextSearchStep attributes - this is the one with excel_column
-                search_text = getattr(step, 'search_text', '')
-                region = getattr(step, 'region', None)
-                confidence = getattr(step, 'confidence', 0.5)
-                click_on_found = getattr(step, 'click_on_found', True)
-                click_offset = getattr(step, 'click_offset', (0, 0))
-                double_click = getattr(step, 'double_click', False)
-                fail_if_not_found = True  # TextSearchStep doesn't have this attribute
-                mask_in_logs = False  # TextSearchStep doesn't have this attribute
-                
-                # Handle Excel column reference for TextSearchStep
-                excel_column = getattr(step, 'excel_column', None)
-                if excel_column and (not search_text or search_text == ''):
-                    if excel_column in self.variables:
-                        search_text = str(self.variables[excel_column])
-                        self.logger.debug(f"Using Excel data from column '{excel_column}': {search_text}")
-                    else:
-                        available_cols = list(self.variables.keys()) if self.variables else []
-                        raise ValueError(f"Excel column '{excel_column}' not found in row data. Available columns: {available_cols}")
-            else:
-                # Legacy or unknown step type
-                search_text = getattr(step, 'text', getattr(step, 'search_text', ''))
-                region = getattr(step, 'region', None)
-                confidence = getattr(step, 'confidence', 0.7)
-                click_on_found = getattr(step, 'click_on_found', True)
-                fail_if_not_found = False
-                mask_in_logs = False
-                
-            if not search_text:
-                # Provide more helpful error message
-                if hasattr(step, 'excel_column') and step.excel_column:
-                    excel_column = step.excel_column
-                    if excel_column not in self.variables:
-                        available_cols = list(self.variables.keys()) if self.variables else []
-                        raise ValueError(f"Excel column '{excel_column}' not found in row data. Available columns: {available_cols}")
-                    else:
-                        raise ValueError(f"Excel column '{excel_column}' has empty value")
-                else:
-                    raise ValueError("No search text specified")
-                
-            # Replace variables in search text
-            search_text = self._substitute_variables(search_text)
+            # DynamicTextSearchStep attributes
+            search_text = getattr(step, 'search_text', '')
+            region = getattr(step, 'search_region', None)
+            confidence = getattr(step, 'confidence_threshold', 0.7)
+            click_on_found = getattr(step, 'click_on_found', True)
+            fail_if_not_found = getattr(step, 'fail_if_not_found', True)
+            mask_in_logs = getattr(step, 'mask_in_logs', False)
+            click_offset = getattr(step, 'click_offset', (0, 0))
+            double_click = getattr(step, 'double_click', False)
+        elif step_class_name == "TextSearchStep":
+            # TextSearchStep attributes - this is the one with excel_column
+            search_text = getattr(step, 'search_text', '')
+            region = getattr(step, 'region', None)
+            confidence = getattr(step, 'confidence', 0.5)
+            click_on_found = getattr(step, 'click_on_found', True)
+            click_offset = getattr(step, 'click_offset', (0, 0))
+            double_click = getattr(step, 'double_click', False)
+            fail_if_not_found = True  # TextSearchStep doesn't have this attribute
+            mask_in_logs = False  # TextSearchStep doesn't have this attribute
             
-            # Log search (mask if sensitive)
+            # Handle Excel column reference for TextSearchStep
+            excel_column = getattr(step, 'excel_column', None)
+            if excel_column and (not search_text or search_text == ''):
+                if excel_column in self.variables:
+                    search_text = str(self.variables[excel_column])
+                    self.logger.debug(f"Using Excel data from column '{excel_column}': {search_text}")
+                else:
+                    available_cols = list(self.variables.keys()) if self.variables else []
+                    raise ValueError(f"Excel column '{excel_column}' not found in row data. Available columns: {available_cols}")
+        else:
+            # Legacy or unknown step type
+            search_text = getattr(step, 'text', getattr(step, 'search_text', ''))
+            region = getattr(step, 'region', None)
+            confidence = getattr(step, 'confidence', 0.7)
+            click_on_found = getattr(step, 'click_on_found', True)
+            fail_if_not_found = False
+            mask_in_logs = False
+            
+        if not search_text:
+            # Provide more helpful error message
+            if hasattr(step, 'excel_column') and step.excel_column:
+                excel_column = step.excel_column
+                if excel_column not in self.variables:
+                    available_cols = list(self.variables.keys()) if self.variables else []
+                    raise ValueError(f"Excel column '{excel_column}' not found in row data. Available columns: {available_cols}")
+                else:
+                    raise ValueError(f"Excel column '{excel_column}' has empty value")
+            else:
+                raise ValueError("No search text specified")
+            
+        # Replace variables in search text
+        search_text = self._substitute_variables(search_text)
+        
+        # Log search (mask if sensitive)
+        if mask_in_logs:
+            self.logger.info("Searching for text: [MASKED]")
+        else:
+            self.logger.info(f"Searching for text: {search_text}")
+        
+        # Find text on screen
+        exact_match = getattr(step, 'exact_match', False)
+        result = self._text_extractor.find_text(
+            search_text,
+            region=region,
+            exact_match=exact_match,
+            confidence_threshold=confidence
+        )
+        
+        if result:
             if mask_in_logs:
-                self.logger.info("Searching for text: [MASKED]")
+                self.logger.info("Text found at: [MASKED LOCATION]")
             else:
-                self.logger.info(f"Searching for text: {search_text}")
+                self.logger.info(f"Text found at: {result.center}")
             
-            # Find text on screen
-            exact_match = getattr(step, 'exact_match', False)
-            result = self._text_extractor.find_text(
-                search_text,
-                region=region,
-                exact_match=exact_match,
-                confidence_threshold=confidence
-            )
-            
-            if result:
-                if mask_in_logs:
-                    self.logger.info("Text found at: [MASKED LOCATION]")
-                else:
-                    self.logger.info(f"Text found at: {result.center}")
+            # Click if requested
+            if click_on_found:
+                click_x = result.center[0] + click_offset[0]
+                click_y = result.center[1] + click_offset[1]
                 
-                # Click if requested
-                if click_on_found:
-                    click_x = result.center[0] + click_offset[0]
-                    click_y = result.center[1] + click_offset[1]
-                    
-                    # Perform click
-                    if double_click:
-                        pyautogui.doubleClick(click_x, click_y)
-                        self.logger.debug(f"Double clicked at: ({click_x}, {click_y})")
-                    else:
-                        pyautogui.click(click_x, click_y)
-                        self.logger.debug(f"Clicked at: ({click_x}, {click_y})")
-                    
-                return result.center
-            else:
-                # Handle not found case
-                if fail_if_not_found:
-                    error_msg = f"Text not found: {search_text if not mask_in_logs else '[MASKED]'}"
-                    raise ValueError(error_msg)
+                # Perform click
+                if double_click:
+                    pyautogui.doubleClick(click_x, click_y)
+                    self.logger.debug(f"Double clicked at: ({click_x}, {click_y})")
                 else:
-                    self.logger.warning(f"Text not found: {search_text if not mask_in_logs else '[MASKED]'}")
-                    return None
-                    
+                    pyautogui.click(click_x, click_y)
+                    self.logger.debug(f"Clicked at: ({click_x}, {click_y})")
+                
+            return result.center
+        else:
+            # Handle not found case
+            if fail_if_not_found:
+                error_msg = f"Text not found: {search_text if not mask_in_logs else '[MASKED]'}"
+                raise ValueError(error_msg)
+            else:
+                self.logger.warning(f"Text not found: {search_text if not mask_in_logs else '[MASKED]'}")
+                return None
+                
         except Exception as e:
             self.logger.error(f"Text search execution failed: {e}")
             import traceback

@@ -8,8 +8,9 @@ from typing import Optional, Dict, Any, List, Callable
 from enum import Enum
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 import pyautogui
-from core.macro_types import Macro, MacroStep
+from core.macro_types import Macro, MacroStep, StepType
 from excel.excel_manager import ExcelManager
+from excel.models import MacroStatus
 from logger.app_logger import get_logger
 from config.settings import Settings
 from automation.executor import StepExecutor
@@ -171,6 +172,9 @@ class ExecutionEngine(QThread):
             if self.progress_calculator:
                 self.progress_calculator.initialize_macro(self.macro, total_rows if self.excel_manager else None)
                 
+            # Check if we have Excel workflow blocks
+            has_excel_blocks = self._has_excel_workflow_blocks()
+            
             # Check if we should run in standalone mode
             if not self.excel_manager or total_rows == 0:
                 # Standalone mode - execute once without Excel data
@@ -192,6 +196,17 @@ class ExecutionEngine(QThread):
                     
                 # Emit result
                 self.rowCompleted.emit(result)
+            elif has_excel_blocks:
+                # Excel workflow mode - blocks handle their own iteration
+                self.logger.info("Starting Excel workflow execution")
+                try:
+                    self._execute_with_excel_workflow()
+                    successful_rows = 1  # TODO: Track properly
+                    failed_rows = 0
+                except Exception as e:
+                    self.logger.error(f"Excel workflow execution failed: {e}")
+                    successful_rows = 0
+                    failed_rows = 1
             else:
                 # Excel mode with data
                 # Track statistics
@@ -274,7 +289,10 @@ class ExecutionEngine(QThread):
             self.step_executor.set_variables(row_data)
             
             # Execute each step
-            for step_index, step in enumerate(self.macro.steps):
+            step_index = 0
+            while step_index < len(self.macro.steps):
+                step = self.macro.steps[step_index]
+                
                 # Check if stopping
                 if self.state == ExecutionState.STOPPING:
                     return ExecutionResult(row_index, False, "Execution stopped")
@@ -284,7 +302,22 @@ class ExecutionEngine(QThread):
                 
                 # Skip disabled steps
                 if not step.enabled:
+                    step_index += 1
                     continue
+                    
+                # Handle Excel workflow steps
+                if step.step_type == StepType.EXCEL_ROW_START:
+                    # Find the matching end step
+                    end_index = self._find_excel_end_step(step_index, step)
+                    if end_index != -1:
+                        # Skip the entire Excel block in row execution
+                        # (Excel blocks are handled at a higher level)
+                        step_index = end_index + 1
+                        continue
+                    else:
+                        self.logger.error(f"No matching Excel end step found for {step.name}")
+                        step_index += 1
+                        continue
                     
                 # Emit step executing signal
                 self.stepExecuting.emit(step, row_index)
@@ -363,6 +396,10 @@ class ExecutionEngine(QThread):
                     row_index, step_index, step.name, step.step_type.value,
                     step_success, step_duration, step_error
                 )
+                
+                # Move to next step (unless already moved by Excel block skip)
+                if step.step_type != StepType.EXCEL_ROW_START:
+                    step_index += 1
                     
             # Progress calculator: complete row
             if self.progress_calculator:
@@ -563,6 +600,183 @@ class ExecutionEngine(QThread):
             self._set_state(ExecutionState.STOPPING)
             self._pause_event.set()  # Resume if paused
             self.logger.info("Stopping execution...")
+            
+    def _find_excel_end_step(self, start_index: int, start_step) -> int:
+        """Find the matching Excel end step for a given start step"""
+        if not hasattr(start_step, 'pair_id'):
+            return -1
+            
+        pair_id = start_step.pair_id
+        for i in range(start_index + 1, len(self.macro.steps)):
+            step = self.macro.steps[i]
+            if (step.step_type == StepType.EXCEL_ROW_END and 
+                hasattr(step, 'pair_id') and 
+                step.pair_id == pair_id):
+                return i
+        return -1
+        
+    def _has_excel_workflow_blocks(self) -> bool:
+        """Check if the macro contains Excel workflow blocks"""
+        for step in self.macro.steps:
+            if step.step_type == StepType.EXCEL_ROW_START:
+                return True
+        return False
+        
+    def _execute_with_excel_workflow(self):
+        """Execute macro with Excel workflow blocks"""
+        # Check if Excel manager is properly initialized
+        if not self.excel_manager or not self.excel_manager._current_data:
+            self.logger.error("Excel manager not properly initialized for workflow execution")
+            return
+            
+        # Check status column
+        status_col = self.excel_manager._current_data._status_column
+        self.logger.info(f"Starting Excel workflow execution - Status column: '{status_col}'")
+        
+        if not status_col:
+            self.logger.warning("No status column configured - creating default")
+            self.excel_manager._current_data.set_status_column('매크로_상태')
+            
+        # Find all Excel workflow blocks
+        excel_blocks = []
+        i = 0
+        while i < len(self.macro.steps):
+            step = self.macro.steps[i]
+            if step.step_type == StepType.EXCEL_ROW_START:
+                end_index = self._find_excel_end_step(i, step)
+                if end_index != -1:
+                    excel_blocks.append({
+                        'start_step': step,
+                        'start_index': i,
+                        'end_index': end_index,
+                        'steps': self.macro.steps[i+1:end_index]
+                    })
+                    i = end_index + 1
+                else:
+                    self.logger.error(f"No matching end step found for Excel block at index {i}")
+                    i += 1
+            else:
+                i += 1
+                
+        if not excel_blocks:
+            self.logger.error("No valid Excel workflow blocks found")
+            return
+            
+        # Execute the workflow
+        for block in excel_blocks:
+            start_step = block['start_step']
+            
+            # Determine which rows to process based on repeat mode
+            if start_step.repeat_mode == "incomplete_only":
+                target_rows = self.excel_manager.get_pending_rows()
+            elif start_step.repeat_mode == "specific_count":
+                all_rows = list(range(len(self.excel_manager._current_data.dataframe)))
+                target_rows = all_rows[:start_step.repeat_count]
+            elif start_step.repeat_mode == "range":
+                target_rows = list(range(start_step.start_row, min(start_step.end_row + 1, 
+                                                                   len(self.excel_manager._current_data.dataframe))))
+            else:  # all
+                target_rows = list(range(len(self.excel_manager._current_data.dataframe)))
+                
+            # Execute block steps for each target row
+            total_rows = len(target_rows)
+            self.logger.info(f"Processing {total_rows} rows with repeat mode: {start_step.repeat_mode}")
+            
+            for i, row_index in enumerate(target_rows):
+                # Check if stopping
+                if self.state == ExecutionState.STOPPING:
+                    break
+                    
+                # Handle pause
+                self._pause_event.wait()
+                
+                # Update progress
+                self.progressUpdated.emit(i + 1, total_rows)
+                
+                # Get row data
+                row_data = self.excel_manager.get_row_data(row_index)
+                self.logger.debug(f"Row {row_index} data: {row_data}")
+                
+                # Log row start
+                self.execution_logger.log_row_start(row_index, row_data)
+                
+                # Set variables for this row
+                self.step_executor.set_variables(row_data)
+                
+                # Execute steps in the block
+                row_success = True
+                for step_idx, step in enumerate(block['steps']):
+                    if not step.enabled:
+                        continue
+                    
+                    # Emit step executing signal
+                    self.stepExecuting.emit(step, row_index)
+                    
+                    step_start_time = time.time()
+                    step_error = ""
+                    
+                    try:
+                        self.logger.debug(f"Executing step '{step.name}' for row {row_index}")
+                        self.step_executor.execute_step(step)
+                        
+                        # Log successful step execution
+                        step_duration = (time.time() - step_start_time) * 1000
+                        self.execution_logger.log_step_execution(
+                            row_index, step_idx, step.name, step.step_type.value,
+                            True, step_duration, ""
+                        )
+                    except Exception as e:
+                        step_error = str(e)
+                        self.logger.error(f"Error executing step '{step.name}' for row {row_index}: {e}")
+                        
+                        # Log failed step execution
+                        step_duration = (time.time() - step_start_time) * 1000
+                        self.execution_logger.log_step_execution(
+                            row_index, step_idx, step.name, step.step_type.value,
+                            False, step_duration, step_error
+                        )
+                        
+                        if step.error_handling.value == "stop":
+                            row_success = False
+                            break
+                            
+                # Mark row as complete or failed
+                # TODO: Consider adding save_immediately option to settings for immediate persistence
+                # For now, we'll save after each row to ensure status is not lost
+                save_immediately = True  # Can be made configurable later
+                
+                if row_success:
+                    self.logger.info(f"Row {row_index} completed successfully - updating status to COMPLETED")
+                    # Log the dataframe state before update
+                    if self.excel_manager._current_data and self.excel_manager._current_data._status_column:
+                        current_status = self.excel_manager._current_data.dataframe.iloc[row_index][self.excel_manager._current_data._status_column]
+                        self.logger.debug(f"Current status for row {row_index} before update: '{current_status}'")
+                    
+                    self.excel_manager.update_row_status(row_index, MacroStatus.COMPLETED, save_immediately=save_immediately)
+                    
+                    # Log the dataframe state after update
+                    if self.excel_manager._current_data and self.excel_manager._current_data._status_column:
+                        new_status = self.excel_manager._current_data.dataframe.iloc[row_index][self.excel_manager._current_data._status_column]
+                        self.logger.debug(f"New status for row {row_index} after update: '{new_status}'")
+                    
+                    self.execution_logger.log_row_complete(row_index, True, 0)
+                else:
+                    self.logger.info(f"Row {row_index} failed - updating status to ERROR")
+                    self.excel_manager.update_row_status(row_index, MacroStatus.ERROR, save_immediately=save_immediately)
+                    self.execution_logger.log_row_complete(row_index, False, 0, step_error)
+                    
+                # Emit row completed signal
+                result = ExecutionResult(row_index, row_success, step_error if not row_success else None)
+                self.rowCompleted.emit(result)
+                
+        # Save Excel file
+        if self.excel_manager:
+            self.logger.info("Saving Excel file after workflow execution...")
+            saved_path = self.excel_manager.save_file()
+            if saved_path:
+                self.logger.info(f"Excel file saved successfully: {saved_path}")
+            else:
+                self.logger.warning("Excel file save returned empty path")
             
     def is_running(self) -> bool:
         """Check if execution is active"""

@@ -39,6 +39,10 @@ class StepType(Enum):
     # Excel operations
     EXCEL_READ = "excel_read"
     EXCEL_WRITE = "excel_write"
+    
+    # Excel workflow steps
+    EXCEL_ROW_START = "excel_row_start"    # Excel 행 반복 시작
+    EXCEL_ROW_END = "excel_row_end"        # Excel 행 반복 끝
 
 class ErrorHandling(Enum):
     """Error handling strategies"""
@@ -605,6 +609,7 @@ class ScreenshotStep(MacroStep):
 
 # Import additional step types
 from .dynamic_text_step import DynamicTextSearchStep
+from .excel_workflow_steps import ExcelRowStartStep, ExcelRowEndStep
 
 class StepFactory:
     """Factory for creating macro steps"""
@@ -620,7 +625,9 @@ class StepFactory:
         StepType.SCREENSHOT: ScreenshotStep,
         StepType.OCR_TEXT: TextSearchStep,
         StepType.IF_CONDITION: IfConditionStep,
-        StepType.LOOP: LoopStep
+        StepType.LOOP: LoopStep,
+        StepType.EXCEL_ROW_START: ExcelRowStartStep,
+        StepType.EXCEL_ROW_END: ExcelRowEndStep
     }
     
     # Add dynamic text search

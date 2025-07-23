@@ -76,12 +76,16 @@ class DataPreviewTable(QTableWidget):
                 
                 # Apply status highlighting
                 if col == status_col_idx and highlight_status:
-                    if value in ['완료', 'Completed', 'Complete', 'Done']:
+                    from excel.models import MacroStatus
+                    if value == MacroStatus.COMPLETED or value in ['완료', 'Completed', 'Complete', 'Done']:
                         item.setBackground(QBrush(QColor(200, 255, 200)))
-                    elif value in ['실패', 'Failed', 'Error']:
+                    elif value == MacroStatus.ERROR or value in ['오류', '실패', 'Failed', 'Error']:
                         item.setBackground(QBrush(QColor(255, 200, 200)))
-                    elif value in ['진행중', 'Processing', 'In Progress']:
+                    elif value == MacroStatus.PROCESSING or value in ['처리중', '진행중', 'Processing', 'In Progress']:
                         item.setBackground(QBrush(QColor(255, 255, 200)))
+                    elif value == MacroStatus.PENDING or value in ['미완료', 'Pending', '']:
+                        # Default white background for pending items
+                        item.setBackground(QBrush(QColor(255, 255, 255)))
                 
                 self.setItem(row, col, item)
         
@@ -169,6 +173,14 @@ class DataPreviewWidget(QWidget):
         
     def load_excel_data(self, excel_data: ExcelData):
         """Load Excel data for preview"""
+        import traceback
+        from logger.app_logger import get_logger
+        logger = get_logger(__name__)
+        
+        # Log when data is being loaded to detect unwanted reloads
+        logger.info(f"DataPreviewWidget.load_excel_data called for sheet: {excel_data.sheet_name if excel_data else 'None'}")
+        logger.debug(f"Stack trace: {''.join(traceback.format_stack()[-5:])}")
+        
         self.excel_data = excel_data
         self.current_page = 0
         self.filtered_indices = None
@@ -194,7 +206,9 @@ class DataPreviewWidget(QWidget):
                 status_col = self.excel_data.get_status_column()
             
             if status_col:
-                mask &= ~df[status_col].isin(['완료', 'Completed', 'Complete', 'Done'])
+                from excel.models import MacroStatus
+                # Filter out completed items
+                mask &= ~df[status_col].isin([MacroStatus.COMPLETED, '완료', 'Completed', 'Complete', 'Done'])
         
         # Apply search filter
         search_text = self.search_input.text().strip()

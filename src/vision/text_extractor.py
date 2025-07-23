@@ -230,6 +230,18 @@ class TextExtractor:
             confidence_threshold = confidence
             
         try:
+            # Validate region if provided
+            if region is not None:
+                if not isinstance(region, (tuple, list)) or len(region) != 4:
+                    self.logger.error(f"Invalid region format: {region}")
+                    return None
+                    
+                # Ensure all values are integers
+                try:
+                    region = tuple(int(x) for x in region)
+                except (ValueError, TypeError) as e:
+                    self.logger.error(f"Invalid region values: {region}, error: {e}")
+                    return None
             # Extract all text from region
             text_results = self.extract_text_from_region(region, confidence_threshold)
             

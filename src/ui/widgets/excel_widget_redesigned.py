@@ -186,6 +186,8 @@ class EnhancedDataTable(DataPreviewWidget):
         # Override parent's status column search to only use our macro status columns
         self.macro_status_added = False
         self.status_col_idx = None
+        from logger.app_logger import get_logger
+        self.logger = get_logger(__name__)
         
         # Connect cell click to handle status toggle
         self.data_table.cellClicked.connect(self.on_cell_clicked)
@@ -195,28 +197,45 @@ class EnhancedDataTable(DataPreviewWidget):
         # Add status columns if not present
         df = excel_data.dataframe
         
-        # Remove any existing generic "상태" column to avoid confusion
+        # Handle existing status columns
         if "상태" in df.columns and "매크로_상태" not in df.columns:
             # Rename existing "상태" to "매크로_상태" to preserve data
             df = df.rename(columns={"상태": "매크로_상태"})
+            # Update the dataframe reference
+            excel_data.dataframe = df
+            self.logger.info("Renamed existing '상태' column to '매크로_상태'")
         elif "상태" in df.columns and "매크로_상태" in df.columns:
             # If both exist, drop the generic "상태" column
             df = df.drop(columns=["상태"])
+            excel_data.dataframe = df
         
-        # Add our status columns if not present
-        for col in self.status_columns:
-            if col not in df.columns:
-                if col == "매크로_상태":
-                    # Initialize with empty string to indicate "not processed"
-                    df[col] = ""
-                elif col == "매크로_실행시간":
-                    df[col] = ""
-                elif col == "매크로_오류메시지":
-                    df[col] = ""
+        # Check if status column already exists (from excel_manager)
+        existing_status_col = excel_data.get_status_column()
         
-        # Update excel_data
-        excel_data.dataframe = df
-        self.macro_status_added = True
+        # If no status column is set, or it's not 매크로_상태, update it
+        if existing_status_col != "매크로_상태":
+            # Add our status columns if not present
+            from excel.models import MacroStatus
+            for col in self.status_columns:
+                if col not in df.columns:
+                    if col == "매크로_상태":
+                        # Initialize with PENDING status
+                        df[col] = MacroStatus.PENDING
+                    elif col == "매크로_실행시간":
+                        df[col] = ""
+                    elif col == "매크로_오류메시지":
+                        df[col] = ""
+            
+            # Update excel_data
+            excel_data.dataframe = df
+            self.macro_status_added = True
+            
+            # Update the ExcelData's status column reference to match what we're using
+            excel_data.set_status_column("매크로_상태")
+        else:
+            # Status column already properly set
+            self.logger.info(f"Using existing status column: {existing_status_col}")
+            self.macro_status_added = True
         
         # Find the status column index
         columns = df.columns.tolist()
@@ -264,9 +283,9 @@ class EnhancedDataTable(DataPreviewWidget):
             if current_status:
                 current_value = current_status.text()
                 
-                # Toggle between empty (pending), "처리중", "완료", "오류"
+                # Toggle between "미완료", "처리중", "완료", "오류"
                 from excel.models import MacroStatus
-                if current_value == MacroStatus.PENDING:  # Empty
+                if current_value == MacroStatus.PENDING or current_value == "":
                     new_status = MacroStatus.PROCESSING
                 elif current_value == MacroStatus.PROCESSING:
                     new_status = MacroStatus.COMPLETED
@@ -500,8 +519,38 @@ class ExcelWidgetRedesigned(QWidget):
         
     def on_sheet_changed(self, sheet_name: str):
         """Handle sheet selection change"""
+        self.logger.info(f"on_sheet_changed called with sheet: {sheet_name}")
+        
+        # Check if we're in the middle of execution - if so, don't reload
+        from automation.engine import ExecutionEngine
+        # Note: This is a temporary check - in production, we should properly track execution state
+        
         if sheet_name and self.excel_manager._current_file:
             self.excel_manager.set_active_sheet(sheet_name)
+            
+            # Check if we need to confirm status column usage
+            if self.excel_manager.has_pending_status_column():
+                column_name, existing_values = self.excel_manager.get_pending_status_info()
+                
+                # Show confirmation dialog
+                msg = f"기존 상태 컬럼 '{column_name}'이(가) 발견되었습니다.\n\n"
+                msg += f"현재 값들: {', '.join(existing_values[:10])}"
+                if len(existing_values) > 10:
+                    msg += f" ... (총 {len(existing_values)}개)"
+                msg += "\n\n이 컬럼을 상태 추적에 사용하시겠습니까?\n"
+                msg += "(아니오를 선택하면 새 '처리상태' 컬럼이 생성됩니다)"
+                
+                reply = QMessageBox.question(
+                    self, 
+                    "상태 컬럼 확인",
+                    msg,
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+                
+                use_existing = (reply == QMessageBox.Yes)
+                self.excel_manager.confirm_status_column_usage(use_existing)
+            
             excel_data = self.excel_manager._current_data
             if excel_data:
                 self.data_table.load_excel_data(excel_data)
@@ -585,12 +634,26 @@ class ExcelWidgetRedesigned(QWidget):
                 
     def reset_all_status(self):
         """Reset all rows to pending status"""
+        self.logger.info("Reset all status button clicked")
+        
         if not self.excel_manager._current_data:
+            self.logger.warning("No Excel data loaded")
             QMessageBox.warning(self, "경고", "Excel 파일이 로드되지 않았습니다.")
             return
             
         # Get total row count
         total_rows = self.excel_manager._current_data.row_count
+        status_column = self.excel_manager._current_data.get_status_column()
+        
+        self.logger.info(f"Total rows: {total_rows}, Status column: {status_column}")
+        self.logger.info(f"Available columns: {self.excel_manager._current_data.columns}")
+        
+        if not status_column:
+            self.logger.error("No status column found, creating one...")
+            # Force creation of status column
+            self.excel_manager._current_data.set_status_column('매크로_상태')
+            status_column = self.excel_manager._current_data.get_status_column()
+            self.logger.info(f"Created status column: {status_column}")
         
         # Confirm dialog
         reply = QMessageBox.question(
@@ -606,6 +669,9 @@ class ExcelWidgetRedesigned(QWidget):
                 self.excel_manager.reset_all_status(save_immediately=True)
                 # Refresh the data table
                 self.data_table.load_excel_data(self.excel_manager._current_data)
+                # Also refresh the sheet display
+                if self.excel_manager._current_data:
+                    self.on_sheet_changed(self.excel_manager._current_data.sheet_name)
                 QMessageBox.information(self, "완료", "모든 행의 상태가 미완료로 변경되었습니다.")
                 self.logger.info(f"Reset all {total_rows} rows to pending status")
             except Exception as e:

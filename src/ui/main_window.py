@@ -85,6 +85,7 @@ class MainWindow(QMainWindow):
         # Connect Excel and Macro widgets to Execution
         self.excel_widget.dataReady.connect(self._on_excel_data_ready)
         self.macro_editor.macroChanged.connect(self._on_macro_changed)
+        self.macro_editor.excelModeRequested.connect(self._on_excel_mode_requested)
         
         # Create menu bar
         self.create_menu_bar()
@@ -276,6 +277,14 @@ class MainWindow(QMainWindow):
         excel_manager = self.excel_widget.get_excel_manager()
         # Always update macro, even without Excel
         self.execution_widget.set_macro_and_excel(macro, excel_manager)
+        
+    def _on_excel_mode_requested(self):
+        """Handle Excel mode request from macro editor"""
+        # Switch to Excel tab
+        self.tab_widget.setCurrentIndex(0)  # Excel tab is at index 0
+        
+        # Show a message in status bar
+        self.status_label.setText("Excel 탭으로 전환되었습니다. Excel 파일을 로드해주세요.")
             
     def save_macro(self):
         """Save current macro to file"""

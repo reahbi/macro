@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QSplitter, QGroupBox, QToolButton, QDialog
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QMimeData, QByteArray, QDataStream, QIODevice
-from PyQt5.QtGui import QDrag, QDragEnterEvent, QDropEvent, QPalette, QIcon, QCursor
+from PyQt5.QtGui import QDrag, QDragEnterEvent, QDropEvent, QPalette, QIcon, QCursor, QBrush, QColor
 from core.macro_types import (
     MacroStep, StepType, Macro, StepFactory,
     MouseClickStep, KeyboardTypeStep, WaitTimeStep
@@ -42,6 +42,21 @@ class StepPaletteItem(QListWidgetItem):
         }
         return tooltips.get(self.step_type, "")
 
+
+class ExcelBlockPaletteItem(QListWidgetItem):
+    """Special palette item for Excel repeat block"""
+    
+    def __init__(self):
+        super().__init__("🔄 Excel 반복 블록")
+        self.is_excel_block = True  # 특별한 타입 표시
+        self.setToolTip(
+            "Excel 행 단위 반복 블록을 추가합니다.\n"
+            "드래그하면 시작과 끝 단계가 자동으로 생성되며,\n"
+            "블록 안의 작업들이 각 Excel 행에 대해 반복됩니다."
+        )
+        # 특별한 배경색 설정
+        self.setBackground(QBrush(QColor(200, 230, 255)))
+
 class StepPalette(QListWidget):
     """Palette of draggable step types"""
     
@@ -54,7 +69,8 @@ class StepPalette(QListWidget):
         
     def init_steps(self):
         """Initialize available step types"""
-        step_configs = [
+        # 기본 단계들
+        basic_configs = [
             (StepType.MOUSE_CLICK, "마우스 클릭", "🖱️"),
             (StepType.MOUSE_MOVE, "마우스 이동", "↗️"),
             (StepType.KEYBOARD_TYPE, "텍스트 입력", "⌨️"),
@@ -64,11 +80,43 @@ class StepPalette(QListWidget):
             (StepType.IMAGE_SEARCH, "이미지 검색", "🔍"),
             (StepType.OCR_TEXT, "텍스트 검색", "🔤"),
             (StepType.SCREENSHOT, "화면 캡처", "📷"),
+        ]
+        
+        # 기본 단계 추가
+        for step_type, name, emoji in basic_configs:
+            item = StepPaletteItem(step_type, f"{emoji} {name}")
+            self.addItem(item)
+            
+        # 구분선 추가
+        separator = QListWidgetItem("──────────────")
+        separator.setFlags(Qt.NoItemFlags)
+        separator.setTextAlignment(Qt.AlignCenter)
+        self.addItem(separator)
+        
+        # Excel 워크플로우 섹션
+        excel_label = QListWidgetItem("📋 Excel 도구")
+        excel_label.setFlags(Qt.NoItemFlags)
+        excel_label.setTextAlignment(Qt.AlignCenter)
+        excel_label.setBackground(QBrush(QColor(230, 240, 250)))
+        self.addItem(excel_label)
+        
+        # Excel 반복 블록 - 특별한 아이템으로 추가
+        excel_block_item = ExcelBlockPaletteItem()
+        self.addItem(excel_block_item)
+        
+        # 구분선 추가
+        separator2 = QListWidgetItem("──────────────")
+        separator2.setFlags(Qt.NoItemFlags)
+        separator2.setTextAlignment(Qt.AlignCenter)
+        self.addItem(separator2)
+        
+        # 제어문
+        control_configs = [
             (StepType.IF_CONDITION, "조건문", "❓"),
             (StepType.LOOP, "반복문", "🔄"),
         ]
         
-        for step_type, name, emoji in step_configs:
+        for step_type, name, emoji in control_configs:
             item = StepPaletteItem(step_type, f"{emoji} {name}")
             self.addItem(item)
             
@@ -85,6 +133,21 @@ class StepPalette(QListWidget):
             stream.writeQString(item.step_type.value)
             
             mime_data.setData("application/x-steptype", byte_array)
+            mime_data.setText(item.text())
+            drag.setMimeData(mime_data)
+            
+            drag.exec_(Qt.CopyAction)
+        elif isinstance(item, ExcelBlockPaletteItem):
+            # Excel 블록 드래그
+            drag = QDrag(self)
+            mime_data = QMimeData()
+            
+            # Excel 블록임을 표시
+            byte_array = QByteArray()
+            stream = QDataStream(byte_array, QIODevice.WriteOnly)
+            stream.writeQString("EXCEL_BLOCK")
+            
+            mime_data.setData("application/x-excelblock", byte_array)
             mime_data.setText(item.text())
             drag.setMimeData(mime_data)
             
@@ -190,7 +253,9 @@ class MacroStepWidget(QFrame):
             StepType.OCR_TEXT: "🔤",
             StepType.SCREENSHOT: "📷",
             StepType.IF_CONDITION: "❓",
-            StepType.LOOP: "🔄"
+            StepType.LOOP: "🔄",
+            StepType.EXCEL_ROW_START: "🔵",
+            StepType.EXCEL_ROW_END: "✅"
         }
         return icons.get(self.step.step_type, "")
         
@@ -286,6 +351,22 @@ class MacroStepWidget(QFrame):
             if hasattr(self.step, 'loop_steps'):
                 details.append(f"{len(self.step.loop_steps)}개 단계 반복")
                 
+        elif self.step.step_type == StepType.EXCEL_ROW_START:
+            if hasattr(self.step, 'repeat_mode'):
+                mode_names = {
+                    "incomplete_only": "미완료 행만",
+                    "specific_count": f"{getattr(self.step, 'repeat_count', 0)}개 행",
+                    "range": f"{getattr(self.step, 'start_row', 0)+1}~{getattr(self.step, 'end_row', 0)+1}번 행",
+                    "all": "모든 행"
+                }
+                details.append(mode_names.get(self.step.repeat_mode, "미완료 행만"))
+            details.append("<b style='color: #2196F3'>Excel 반복 시작</b>")
+            
+        elif self.step.step_type == StepType.EXCEL_ROW_END:
+            if hasattr(self.step, 'mark_as_complete') and self.step.mark_as_complete:
+                details.append(f"완료 시 '{getattr(self.step, 'completion_status', '완료')}' 표시")
+            details.append("<b style='color: #4CAF50'>Excel 반복 끝</b>")
+                
         return " | ".join(details) if details else ""
         
     def _on_enable_toggled(self, checked: bool):
@@ -296,13 +377,19 @@ class MacroStepWidget(QFrame):
         
     def _update_style(self):
         """Update widget style based on state"""
-        # Special styling for IF_CONDITION and LOOP
+        # Special styling for different step types
         if self.step.step_type == StepType.IF_CONDITION:
             base_color = "#fff3e0"  # Orange tint
             border_color = "#ff9800"
         elif self.step.step_type == StepType.LOOP:
             base_color = "#f3e5f5"  # Purple tint
             border_color = "#9c27b0"
+        elif self.step.step_type == StepType.EXCEL_ROW_START:
+            base_color = "#E3F2FD"  # Light blue
+            border_color = "#2196F3"
+        elif self.step.step_type == StepType.EXCEL_ROW_END:
+            base_color = "#E8F5E9"  # Light green
+            border_color = "#4CAF50"
         else:
             base_color = "white"
             border_color = "#ddd"
@@ -371,6 +458,7 @@ class MacroFlowWidget(QWidget):
     stepMoved = pyqtSignal(str, int)  # step_id, new_index
     stepDeleted = pyqtSignal(str)  # step_id
     stepEdited = pyqtSignal(MacroStep)
+    excelModeRequested = pyqtSignal()  # Excel 모드 전환 요청
     
     def __init__(self):
         super().__init__()
@@ -732,13 +820,15 @@ class MacroFlowWidget(QWidget):
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Handle drag enter"""
         if event.mimeData().hasFormat("application/x-steptype") or \
-           event.mimeData().hasFormat("application/x-macrostep"):
+           event.mimeData().hasFormat("application/x-macrostep") or \
+           event.mimeData().hasFormat("application/x-excelblock"):
             event.acceptProposedAction()
             
     def dragMoveEvent(self, event):
         """Handle drag move"""
         if event.mimeData().hasFormat("application/x-steptype") or \
-           event.mimeData().hasFormat("application/x-macrostep"):
+           event.mimeData().hasFormat("application/x-macrostep") or \
+           event.mimeData().hasFormat("application/x-excelblock"):
             event.acceptProposedAction()
             
     def dropEvent(self, event: QDropEvent):
@@ -747,7 +837,59 @@ class MacroFlowWidget(QWidget):
             # Calculate drop index
             drop_index = self._get_drop_index(event.pos())
             
-            if event.mimeData().hasFormat("application/x-steptype"):
+            if event.mimeData().hasFormat("application/x-excelblock"):
+                # Excel 블록 드롭 처리
+                from core.excel_workflow_steps import ExcelWorkflowBlock
+                from ui.dialogs.excel_repeat_dialog import ExcelRepeatDialog, QuickExcelSetupDialog
+                
+                # Excel 정보 가져오기
+                total_rows = 0
+                incomplete_rows = 0
+                parent = self.parent()
+                while parent:
+                    if hasattr(parent, 'excel_widget'):
+                        excel_manager = parent.excel_widget.get_excel_manager()
+                        if excel_manager and excel_manager._current_data is not None:
+                            total_rows = len(excel_manager._current_data.dataframe)
+                            # 미완료 행 계산
+                            status_col = excel_manager._current_data.get_status_column()
+                            if status_col and status_col in excel_manager._current_data.dataframe.columns:
+                                completed_statuses = ['완료', 'Completed', 'Complete', 'Done']
+                                incomplete_rows = len(excel_manager._current_data.dataframe[
+                                    ~excel_manager._current_data.dataframe[status_col].isin(completed_statuses)
+                                ])
+                            else:
+                                incomplete_rows = total_rows
+                        break
+                    parent = parent.parent()
+                
+                # 반복 설정 다이얼로그 표시
+                repeat_dialog = ExcelRepeatDialog(total_rows, incomplete_rows, self)
+                if repeat_dialog.exec_() == QDialog.Accepted:
+                    settings = repeat_dialog.get_settings()
+                    
+                    # Excel 블록 생성
+                    workflow_block = ExcelWorkflowBlock()
+                    start_step, end_step = workflow_block.create_block(
+                        repeat_mode=settings["repeat_mode"],
+                        repeat_count=settings["repeat_count"],
+                        start_row=settings["start_row"],
+                        end_row=settings["end_row"]
+                    )
+                    
+                    # 매크로에 추가
+                    self.macro.add_step(start_step, drop_index)
+                    self.macro.add_step(end_step, drop_index + 1)
+                    self._rebuild_ui()
+                    
+                    # Excel 모드 자동 활성화 시그널 발생
+                    self.excelModeRequested.emit()
+                    
+                    # 빠른 안내 다이얼로그 표시
+                    quick_dialog = QuickExcelSetupDialog(self)
+                    quick_dialog.exec_()
+                    
+            elif event.mimeData().hasFormat("application/x-steptype"):
                 # New step from palette
                 byte_array = event.mimeData().data("application/x-steptype")
                 stream = QDataStream(byte_array, QIODevice.ReadOnly)
@@ -769,7 +911,9 @@ class MacroFlowWidget(QWidget):
                     StepType.OCR_TEXT: "텍스트 검색",
                     StepType.SCREENSHOT: "화면 캡처",
                     StepType.IF_CONDITION: "조건문",
-                    StepType.LOOP: "반복문"
+                    StepType.LOOP: "반복문",
+                    StepType.EXCEL_ROW_START: "Excel 행 시작",
+                    StepType.EXCEL_ROW_END: "Excel 행 끝"
                 }
                 new_step.name = step_names.get(step_type, step_type.value)
                 
@@ -836,6 +980,7 @@ class MacroEditorWidget(QWidget):
     """Complete macro editor with palette and flow"""
     
     macroChanged = pyqtSignal(Macro)
+    excelModeRequested = pyqtSignal()  # Excel 탭으로 전환 요청
     
     def __init__(self):
         super().__init__()
@@ -873,6 +1018,7 @@ class MacroEditorWidget(QWidget):
         self.flow_widget.stepMoved.connect(self._on_change)
         self.flow_widget.stepDeleted.connect(self._on_change)
         self.flow_widget.stepEdited.connect(self._on_step_edit)
+        self.flow_widget.excelModeRequested.connect(self.excelModeRequested.emit)
         
         scroll.setWidget(self.flow_widget)
         scroll.setWidgetResizable(True)

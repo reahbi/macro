@@ -155,20 +155,63 @@ class ExcelManager:
         # Create ExcelData instance
         excel_data = ExcelData(df, sheet_name, self._current_file)
         
-        # Check for status column
-        status_columns = ['상태', 'Status', '완료여부', '처리상태', 'status', 'STATUS']
+        # Check for status column - prioritize 매크로_상태
+        status_columns = ['매크로_상태', '상태', 'Status', '완료여부', '처리상태', 'status', 'STATUS']
+        found_status_column = None
         for col in status_columns:
             if col in df.columns:
-                excel_data.set_status_column(col)
+                found_status_column = col
                 break
         
-        # If no status column found, create one
-        if not excel_data.get_status_column():
-            excel_data.set_status_column('처리상태')
-            self.logger.info("Created new status column: 처리상태")
+        if found_status_column:
+            # Analyze existing status values
+            unique_values = df[found_status_column].unique()
+            non_empty_values = [str(v) for v in unique_values if pd.notna(v) and str(v).strip()]
+            
+            self.logger.info(f"Found existing status column '{found_status_column}' with values: {non_empty_values}")
+            
+            # Check if we need user confirmation
+            if non_empty_values and len(non_empty_values) > 0:
+                # Store info for later dialog (to avoid circular imports)
+                self._pending_status_column = found_status_column
+                self._existing_status_values = non_empty_values
+            else:
+                # Empty column, just use it
+                excel_data.set_status_column(found_status_column)
+                self.logger.info(f"Using existing empty status column: {found_status_column}")
+        else:
+            # If no status column found, create one
+            excel_data.set_status_column('매크로_상태')
+            self.logger.info("Created new status column: 매크로_상태")
         
         self._current_data = excel_data
         return excel_data
+        
+    def confirm_status_column_usage(self, use_existing: bool):
+        """Confirm whether to use existing status column"""
+        if hasattr(self, '_pending_status_column') and self._current_data:
+            if use_existing:
+                self._current_data.set_status_column(self._pending_status_column)
+                self.logger.info(f"Using existing status column: {self._pending_status_column}")
+            else:
+                # Create new column
+                self._current_data.set_status_column('매크로_상태')
+                self.logger.info("Created new status column: 매크로_상태")
+            
+            # Clean up
+            delattr(self, '_pending_status_column')
+            if hasattr(self, '_existing_status_values'):
+                delattr(self, '_existing_status_values')
+                
+    def has_pending_status_column(self) -> bool:
+        """Check if there's a pending status column decision"""
+        return hasattr(self, '_pending_status_column')
+        
+    def get_pending_status_info(self) -> tuple:
+        """Get pending status column info"""
+        if hasattr(self, '_pending_status_column'):
+            return self._pending_status_column, getattr(self, '_existing_status_values', [])
+        return None, []
     
     def save_file(self, file_path: Optional[str] = None) -> str:
         """Save current data back to Excel"""
@@ -179,22 +222,69 @@ class ExcelManager:
         
         save_path = file_path or self._current_file
         
+        # Check if file is accessible
+        try:
+            with open(save_path, 'a'):
+                pass
+        except IOError:
+            self.logger.error(f"Cannot access file '{save_path}' - it may be open in another application!")
+            return ""
+        
+        # Check if file is locked
+        try:
+            # Try to open file exclusively to check if it's locked
+            with open(save_path, 'r+b') as f:
+                pass
+        except (IOError, OSError) as e:
+            self.logger.error(f"Excel file may be locked by another process: {e}")
+            # Continue anyway as openpyxl might handle it differently
+        
+        # Get file modification time before save
+        import os
+        import time
+        mod_time_before = os.path.getmtime(save_path) if os.path.exists(save_path) else 0
+        self.logger.info(f"File modification time before save: {time.ctime(mod_time_before)}")
+        
+        # Log current status column values before saving
+        if self._current_data._status_column:
+            status_values = self._current_data.dataframe[self._current_data._status_column].value_counts()
+            self.logger.info(f"Status column '{self._current_data._status_column}' values before save: {status_values.to_dict()}")
+        
         # Read all sheets to preserve
         with pd.ExcelFile(self._current_file) as xls:
             sheets = {}
             for sheet_name in xls.sheet_names:
                 if sheet_name == self._current_data.sheet_name:
                     sheets[sheet_name] = self._current_data.dataframe
+                    self.logger.debug(f"Using updated dataframe for sheet '{sheet_name}'")
                 else:
                     sheets[sheet_name] = pd.read_excel(xls, sheet_name)
         
         # Save all sheets
-        with pd.ExcelWriter(save_path, engine='openpyxl') as writer:
-            for sheet_name, df in sheets.items():
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-        
-        self.logger.info(f"Saved Excel file: {save_path}")
-        return save_path
+        try:
+            with pd.ExcelWriter(save_path, engine='openpyxl') as writer:
+                for sheet_name, df in sheets.items():
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    self.logger.debug(f"Written sheet '{sheet_name}' with {len(df)} rows")
+            
+            # Verify file was actually saved
+            import time
+            mod_time_after = os.path.getmtime(save_path)
+            self.logger.info(f"File modification time after save: {time.ctime(mod_time_after)}")
+            
+            if mod_time_after <= mod_time_before:
+                self.logger.warning("File modification time did not change after save!")
+            
+            # Log status column values after saving
+            if self._current_data._status_column:
+                status_values = self._current_data.dataframe[self._current_data._status_column].value_counts()
+                self.logger.info(f"Status column '{self._current_data._status_column}' values after save: {status_values.to_dict()}")
+            
+            self.logger.info(f"Saved Excel file successfully: {save_path}")
+            return save_path
+        except Exception as e:
+            self.logger.error(f"Failed to save Excel file: {e}", exc_info=True)
+            raise
     
     def set_column_mapping(self, excel_column: str, variable_name: str, 
                           data_type: ColumnType, is_required: bool = True):
@@ -230,9 +320,17 @@ class ExcelManager:
         if not self._current_data:
             raise ValueError("No data loaded")
         
+        self.logger.info(f"ExcelManager.update_row_status called - row: {row_index}, status: '{status}', save_immediately: {save_immediately}")
+        
+        # Check if status column is configured
+        if not self._current_data._status_column:
+            self.logger.error(f"Status column not configured! Cannot update row {row_index}")
+            return
+            
         self._current_data.update_row_status(row_index, status)
         
         if save_immediately:
+            self.logger.info(f"Saving file immediately after status update for row {row_index}")
             self.save_file()
     
     def update_all_rows_status(self, status: str, save_immediately: bool = False):
@@ -249,11 +347,27 @@ class ExcelManager:
     def reset_all_status(self, save_immediately: bool = False):
         """Reset all rows to pending status"""
         from .models import MacroStatus
+        if not self._current_data:
+            raise ValueError("No data loaded")
+            
+        # Ensure status column exists
+        if not self._current_data._status_column:
+            self._current_data.set_status_column('매크로_상태')
+            self.logger.info("Created status column: 매크로_상태")
+            
         self.update_all_rows_status(MacroStatus.PENDING, save_immediately)
         
     def complete_all_status(self, save_immediately: bool = False):
         """Mark all rows as completed"""
         from .models import MacroStatus
+        if not self._current_data:
+            raise ValueError("No data loaded")
+            
+        # Ensure status column exists
+        if not self._current_data._status_column:
+            self._current_data.set_status_column('매크로_상태')
+            self.logger.info("Created status column: 매크로_상태")
+            
         self.update_all_rows_status(MacroStatus.COMPLETED, save_immediately)
     
     def get_pending_rows(self) -> List[int]:
@@ -279,8 +393,19 @@ class ExcelManager:
     def get_row_data(self, row_index: int) -> Dict[str, Any]:
         """특정 행의 데이터 반환"""
         if not self.has_data() or row_index >= self.get_total_rows():
+            self.logger.warning(f"Invalid row index {row_index} or no data loaded")
             return {}
-        return self.df.iloc[row_index].to_dict()
+        
+        # Use _current_data if available (new style)
+        if self._current_data:
+            row_data = self._current_data.get_row_data(row_index)
+            self.logger.debug(f"Retrieved row {row_index} data: {list(row_data.keys())}")
+            return row_data
+        
+        # Fallback to direct dataframe access (old style)
+        row_data = self.df.iloc[row_index].to_dict()
+        self.logger.debug(f"Retrieved row {row_index} data (legacy): {list(row_data.keys())}")
+        return row_data
     
     def add_mapping(self, variable: str, column: str):
         """변수와 컬럼 매핑 추가"""
@@ -291,12 +416,28 @@ class ExcelManager:
         if not self._current_file:
             raise ValueError("No Excel file loaded")
         
-        # Read the sheet data
+        # Check if we already have this sheet loaded
+        if self._current_data and self._current_data.sheet_name == sheet_name:
+            self.logger.info(f"Sheet '{sheet_name}' is already active, skipping reload")
+            return
+        
+        self.logger.info(f"Setting active sheet to: {sheet_name} (will reload data)")
+        
+        # Read the sheet data (this creates _current_data with status column)
         self.read_sheet(sheet_name)
         
-        # Also update the df property for simple access
-        self.df = pd.read_excel(self._current_file, sheet_name=sheet_name)
-        self.logger.info(f"Active sheet set to: {sheet_name}")
+        # Update the df property from _current_data, not re-reading from file
+        if self._current_data:
+            self.df = self._current_data.dataframe
+            # Ensure status column exists
+            if not self._current_data.get_status_column():
+                self._current_data.set_status_column('매크로_상태')
+                self.logger.info("Created default status column: 매크로_상태")
+        else:
+            # Fallback if _current_data is not set
+            self.df = pd.read_excel(self._current_file, sheet_name=sheet_name)
+            
+        self.logger.info(f"Active sheet set to: {sheet_name} with {len(self.df.columns)} columns")
     
     def get_sheet_data(self) -> Optional[pd.DataFrame]:
         """Get the current sheet data as DataFrame"""

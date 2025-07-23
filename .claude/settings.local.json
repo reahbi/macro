@@ -24,7 +24,12 @@
       "Bash(attrib:*)",
       "Bash(del test_new_ui.py check_ui_structure.py)",
       "Bash(grep:*)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(RUN_AUTO_VENV.bat)",
+      "Bash(copy executor.py executor_backup.py)",
+      "Bash(copy executor_fixed.py executor.py)",
+      "Bash(cp:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }

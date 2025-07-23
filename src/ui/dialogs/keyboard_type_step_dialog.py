@@ -5,7 +5,8 @@ Keyboard type step configuration dialog
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QSpinBox, QDialogButtonBox, QTextEdit,
-    QFormLayout, QGroupBox, QCheckBox, QListWidget, QSplitter
+    QFormLayout, QGroupBox, QCheckBox, QListWidget, QSplitter,
+    QWidget
 )
 from PyQt5.QtCore import Qt
 from core.macro_types import KeyboardTypeStep

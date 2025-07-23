@@ -29,6 +29,7 @@ class TextSearchStepDialog(QDialog):
         self.region = self.step.region
         self.text_extractor = TextExtractor()
         self.monitors = get_monitor_info()  # Get monitor information
+        self._loading_data = False  # Flag to prevent region reset during data loading
         self.setWindowTitle("텍스트 검색 단계 설정")
         self.setModal(True)
         self.setMinimumWidth(500)
@@ -241,6 +242,8 @@ class TextSearchStepDialog(QDialog):
         
     def load_step_data(self):
         """Load data from step"""
+        self._loading_data = True  # Set flag to prevent region reset
+        
         self.name_edit.setText(self.step.name)
         
         # Set search method
@@ -271,6 +274,12 @@ class TextSearchStepDialog(QDialog):
             else:
                 # Custom region
                 self.search_scope_combo.setCurrentIndex(len(self.monitors) + 1)  # Last option
+                # Ensure region label is updated for custom region
+                self.region_label.setText(
+                    f"영역: ({self.region[0]}, {self.region[1]}) "
+                    f"크기: {self.region[2]}x{self.region[3]}"
+                )
+                self.region_buttons_widget.setVisible(True)
         else:
             self.search_scope_combo.setCurrentIndex(0)  # 전체 화면
         
@@ -284,6 +293,9 @@ class TextSearchStepDialog(QDialog):
         # Set click type
         if hasattr(self.step, 'double_click'):
             self.click_type_combo.setCurrentIndex(1 if self.step.double_click else 0)
+        
+        # Reset loading flag
+        self._loading_data = False
         
     def _select_region(self):
         """Select screen region"""
@@ -512,6 +524,10 @@ class TextSearchStepDialog(QDialog):
         
     def _on_search_scope_changed(self, index):
         """Handle search scope change"""
+        # Don't reset region if we're loading data
+        if self._loading_data:
+            return
+            
         if index == 0:  # 전체 화면 (모든 모니터)
             self.region = None
             self.region_label.setText("전체 화면 (모든 모니터)")
