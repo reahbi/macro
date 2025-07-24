@@ -25,6 +25,9 @@ class KeyboardTypeStepDialog(QDialog):
         self.setWindowTitle("텍스트 입력 설정")
         self.setModal(True)
         self.setMinimumWidth(500)
+        # Prevent dialog from closing parent window
+        self.setAttribute(Qt.WA_DeleteOnClose, False)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.init_ui()
         self.load_step_data()
         
@@ -118,8 +121,9 @@ class KeyboardTypeStepDialog(QDialog):
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
             Qt.Horizontal
         )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
+        # Use lambda to ensure proper handling
+        buttons.accepted.connect(lambda: self.done(QDialog.Accepted))
+        buttons.rejected.connect(lambda: self.done(QDialog.Rejected))
         main_layout.addWidget(buttons)
         
         self.setLayout(main_layout)
@@ -174,3 +178,8 @@ class KeyboardTypeStepDialog(QDialog):
             'interval': self.interval_spin.value() / 1000.0,
             'use_variables': self.use_variables_check.isChecked()
         }
+        
+    def closeEvent(self, event):
+        """Handle close event to prevent parent window from closing"""
+        event.accept()
+        # Don't propagate to parent

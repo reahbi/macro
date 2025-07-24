@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QSplitter, QGroupBox, QToolButton, QDialog
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QMimeData, QByteArray, QDataStream, QIODevice
-from PyQt5.QtGui import QDrag, QDragEnterEvent, QDropEvent, QPalette, QIcon, QCursor, QBrush, QColor
+from PyQt5.QtGui import QDrag, QDragEnterEvent, QDropEvent, QPalette, QIcon, QCursor, QBrush, QColor, QPainter, QPen
 from core.macro_types import (
     MacroStep, StepType, Macro, StepFactory,
     MouseClickStep, KeyboardTypeStep, WaitTimeStep
@@ -136,6 +136,8 @@ class StepPalette(QListWidget):
             mime_data.setText(item.text())
             drag.setMimeData(mime_data)
             
+            # Don't set pixmap to avoid null pixmap warnings
+            
             drag.exec_(Qt.CopyAction)
         elif isinstance(item, ExcelBlockPaletteItem):
             # Excel 블록 드래그
@@ -150,6 +152,8 @@ class StepPalette(QListWidget):
             mime_data.setData("application/x-excelblock", byte_array)
             mime_data.setText(item.text())
             drag.setMimeData(mime_data)
+            
+            # Don't set pixmap to avoid null pixmap warnings
             
             drag.exec_(Qt.CopyAction)
 
@@ -178,7 +182,12 @@ class MacroStepWidget(QFrame):
         
         # Drag handle
         self.handle = QLabel("≡")
-        self.handle.setStyleSheet("font-size: 16px; color: #888;")
+        self.handle.setToolTip("드래그하여 순서 변경")
+        self.handle.setStyleSheet("""
+            font-size: 20px; 
+            color: #888;
+            padding: 0 5px;
+        """)
         self.handle.setCursor(Qt.OpenHandCursor)
         layout.addWidget(self.handle)
         
@@ -419,10 +428,10 @@ class MacroStepWidget(QFrame):
     def mousePressEvent(self, event):
         """Handle mouse press for dragging"""
         if event.button() == Qt.LeftButton:
-            # Check if clicking on handle
-            handle_rect = self.handle.geometry()
-            if handle_rect.contains(event.pos()):
-                self.drag_start_position = event.pos()
+            # Allow dragging from anywhere on the widget, not just the handle
+            self.drag_start_position = event.pos()
+            # Change cursor to indicate dragging
+            self.setCursor(Qt.ClosedHandCursor)
                 
     def mouseMoveEvent(self, event):
         """Handle mouse move for dragging"""
@@ -449,7 +458,36 @@ class MacroStepWidget(QFrame):
         mime_data.setText(self.step.name or self.step.step_type.value)
         drag.setMimeData(mime_data)
         
+        # Don't set pixmap to avoid null pixmap warnings
+        # The drag operation will work fine without a preview
+        
         drag.exec_(Qt.MoveAction)
+        
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release"""
+        self.setCursor(Qt.ArrowCursor)
+        super().mouseReleaseEvent(event)
+        
+    def enterEvent(self, event):
+        """Handle mouse enter for hover effect"""
+        # Store original style if not already stored
+        if not hasattr(self, '_original_style'):
+            self._original_style = self.styleSheet()
+        # Apply hover effect
+        self.setStyleSheet(self._original_style + """
+            MacroStepWidget {
+                background-color: #f5f5f5;
+                border: 1px solid #0078d4;
+            }
+        """)
+        super().enterEvent(event)
+        
+    def leaveEvent(self, event):
+        """Handle mouse leave"""
+        # Restore original style
+        if hasattr(self, '_original_style'):
+            self.setStyleSheet(self._original_style)
+        super().leaveEvent(event)
 
 class MacroFlowWidget(QWidget):
     """Widget displaying the macro flow with drag/drop support"""
@@ -465,6 +503,7 @@ class MacroFlowWidget(QWidget):
         self.macro = Macro()
         self.step_widgets: Dict[str, MacroStepWidget] = {}
         self.selected_steps: Dict[str, bool] = {}  # step_id -> selected
+        self._drop_indicator_position = None  # Position for drop indicator line
         self.setAcceptDrops(True)
         self.init_ui()
         
@@ -567,6 +606,7 @@ class MacroFlowWidget(QWidget):
             # Open appropriate dialog based on step type
             if step.step_type == StepType.WAIT_IMAGE:
                 from ui.dialogs.image_step_dialog import WaitImageStepDialog
+                # Find the main window as parent to avoid event propagation issues
                 dialog = WaitImageStepDialog(step, parent=self)
                 if dialog.exec_() == QDialog.Accepted:
                     # Update step with new data
@@ -711,6 +751,8 @@ class MacroFlowWidget(QWidget):
                         break
                     parent = parent.parent()
                     
+                # Create dialog with this widget as parent, not the main window
+                # This prevents the dialog close from triggering main window's close
                 dialog = KeyboardTypeStepDialog(step, excel_columns, parent=self)
                 if dialog.exec_() == QDialog.Accepted:
                     step_data = dialog.get_step_data()
@@ -831,6 +873,16 @@ class MacroFlowWidget(QWidget):
            event.mimeData().hasFormat("application/x-excelblock"):
             event.acceptProposedAction()
             
+            # Calculate drop position and update indicator
+            drop_index = self._get_drop_index(event.pos())
+            self._update_drop_indicator(drop_index)
+            
+    def dragLeaveEvent(self, event):
+        """Handle drag leave"""
+        self._drop_indicator_position = None
+        self.update()  # Redraw to remove indicator
+        super().dragLeaveEvent(event)
+            
     def dropEvent(self, event: QDropEvent):
         """Handle drop"""
         try:
@@ -864,9 +916,15 @@ class MacroFlowWidget(QWidget):
                     parent = parent.parent()
                 
                 # 반복 설정 다이얼로그 표시
+                print(f"DEBUG: Creating ExcelRepeatDialog with {total_rows} rows, {incomplete_rows} incomplete")
                 repeat_dialog = ExcelRepeatDialog(total_rows, incomplete_rows, self)
-                if repeat_dialog.exec_() == QDialog.Accepted:
+                print("DEBUG: Showing ExcelRepeatDialog")
+                dialog_result = repeat_dialog.exec_()
+                print(f"DEBUG: ExcelRepeatDialog result: {dialog_result}")
+                
+                if dialog_result == QDialog.Accepted:
                     settings = repeat_dialog.get_settings()
+                    print(f"DEBUG: ExcelRepeatDialog settings: {settings}")
                     
                     # Excel 블록 생성
                     workflow_block = ExcelWorkflowBlock()
@@ -885,9 +943,22 @@ class MacroFlowWidget(QWidget):
                     # Excel 모드 자동 활성화 시그널 발생
                     self.excelModeRequested.emit()
                     
-                    # 빠른 안내 다이얼로그 표시
-                    quick_dialog = QuickExcelSetupDialog(self)
-                    quick_dialog.exec_()
+                    # 빠른 안내 다이얼로그 표시 - 에러 처리 추가
+                    try:
+                        print("DEBUG: Creating QuickExcelSetupDialog")
+                        if self.isVisible() and not self.isHidden():
+                            quick_dialog = QuickExcelSetupDialog(self)
+                            print("DEBUG: Showing QuickExcelSetupDialog")
+                            quick_dialog.exec_()
+                            print("DEBUG: QuickExcelSetupDialog closed normally")
+                        else:
+                            print("DEBUG: Parent widget not visible, skipping quick dialog")
+                    except Exception as e:
+                        print(f"ERROR: Failed to show quick Excel setup dialog: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        # Don't let dialog errors crash the whole operation
+                        pass
                     
             elif event.mimeData().hasFormat("application/x-steptype"):
                 # New step from palette
@@ -943,11 +1014,20 @@ class MacroFlowWidget(QWidget):
                 
             event.acceptProposedAction()
             
+            # Clear drop indicator
+            self._drop_indicator_position = None
+            self.update()
+            
         except Exception as e:
-            QMessageBox.critical(self, "\uc624\ub958", f"\ub4dc\ub798\uadf8 \uc568 \ub4dc\ub86d \uc911 \uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4:\n{str(e)}")
-            print(f"Drop event error: {e}")
+            print(f"ERROR in dropEvent: {e}")
             import traceback
             traceback.print_exc()
+            
+            # Show error message but don't let it crash the app
+            try:
+                QMessageBox.critical(self, "오류", f"드래그 앤 드롭 중 오류가 발생했습니다:\n{str(e)}")
+            except:
+                print("ERROR: Could not show error dialog")
         
     def _get_drop_index(self, pos) -> int:
         """Calculate index where item should be dropped"""
@@ -963,6 +1043,38 @@ class MacroFlowWidget(QWidget):
                     return i
                     
         return len(self.macro.steps)
+        
+    def _update_drop_indicator(self, drop_index: int):
+        """Update position of drop indicator"""
+        if drop_index == 0 and not self.macro.steps:
+            # Empty list
+            self._drop_indicator_position = 50
+        elif drop_index < len(self.macro.steps):
+            # Between existing items
+            step = self.macro.steps[drop_index]
+            widget = self.step_widgets.get(step.step_id)
+            if widget:
+                self._drop_indicator_position = widget.geometry().top() - 2
+        else:
+            # At the end
+            if self.macro.steps:
+                last_step = self.macro.steps[-1]
+                widget = self.step_widgets.get(last_step.step_id)
+                if widget:
+                    self._drop_indicator_position = widget.geometry().bottom() + 2
+        
+        self.update()  # Trigger repaint
+        
+    def paintEvent(self, event):
+        """Paint drop indicator line"""
+        super().paintEvent(event)
+        
+        if self._drop_indicator_position is not None:
+            painter = QPainter(self)
+            painter.setPen(QPen(QColor(0, 120, 215), 3))  # Blue line
+            painter.drawLine(10, self._drop_indicator_position, 
+                           self.width() - 10, self._drop_indicator_position)
+            painter.end()
         
     def _on_selection_changed(self, step_id: str, selected: bool):
         """Handle step selection change"""

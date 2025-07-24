@@ -1,0 +1,24 @@
+{
+  "macro_id": "d2907cfb-4b38-404e-b416-3726cd82bde1",
+  "name": "Test Macro",
+  "description": "",
+  "version": "1.0.0",
+  "created_at": "2025-07-23T17:15:07.304499",
+  "updated_at": "2025-07-23T17:15:07.304511",
+  "steps": [
+    {
+      "step_id": "e7947d9e-7dfa-4528-8dac-ef0e654f23e6",
+      "step_type": "keyboard_type",
+      "name": "Test Keyboard Step",
+      "description": "",
+      "enabled": true,
+      "error_handling": "stop",
+      "retry_count": 0,
+      "text": "Hello ${name}, your order ${order_id} is ready!",
+      "interval": 0.1,
+      "use_variables": true
+    }
+  ],
+  "variables": {},
+  "metadata": {}
+}

@@ -87,6 +87,9 @@ class MainWindow(QMainWindow):
         self.macro_editor.macroChanged.connect(self._on_macro_changed)
         self.macro_editor.excelModeRequested.connect(self._on_excel_mode_requested)
         
+        # Connect execution widget's refresh request to Excel widget
+        self.execution_widget.refreshExcelRequested.connect(self._on_refresh_excel_requested)
+        
         # Create menu bar
         self.create_menu_bar()
         
@@ -236,25 +239,7 @@ class MainWindow(QMainWindow):
             dialog = FirstRunDialog(self)
             dialog.exec_()
         
-    def closeEvent(self, event):
-        """Handle window close event"""
-        if self.settings.get("ui.confirm_exit", True):
-            reply = QMessageBox.question(
-                self,
-                "Confirm Exit",
-                "Are you sure you want to exit?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
-            
-            if reply == QMessageBox.Yes:
-                self.save_window_state()
-                event.accept()
-            else:
-                event.ignore()
-        else:
-            self.save_window_state()
-            event.accept()
+    # Removed duplicate closeEvent method - see line 721 for the actual implementation
             
     def save_window_state(self):
         """Save window size and position"""
@@ -285,6 +270,12 @@ class MainWindow(QMainWindow):
         
         # Show a message in status bar
         self.status_label.setText("Excel 탭으로 전환되었습니다. Excel 파일을 로드해주세요.")
+        
+    def _on_refresh_excel_requested(self):
+        """Handle Excel refresh request from execution widget"""
+        self.logger.info("Excel refresh requested after execution")
+        # Call Excel widget's refresh method
+        self.excel_widget.refresh_current_data()
             
     def save_macro(self):
         """Save current macro to file"""

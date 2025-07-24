@@ -213,6 +213,25 @@ class ExcelManager:
             return self._pending_status_column, getattr(self, '_existing_status_values', [])
         return None, []
     
+    def reload_current_file(self) -> None:
+        """Reload current file from disk to get latest changes"""
+        if not self._current_file or not self._current_data:
+            raise ValueError("No file currently loaded")
+            
+        self.logger.info(f"Reloading Excel file: {self._current_file}")
+        
+        # Get current sheet name
+        current_sheet = self._current_data.sheet_name
+        
+        # Read fresh data from file
+        df = pd.read_excel(self._current_file, sheet_name=current_sheet)
+        
+        # Update current data with fresh DataFrame
+        self._current_data.dataframe = df
+        self._current_data.row_count = len(df)
+        
+        self.logger.info(f"Reloaded {len(df)} rows from sheet '{current_sheet}'")
+        
     def save_file(self, file_path: Optional[str] = None) -> str:
         """Save current data back to Excel"""
         if not self._current_data:

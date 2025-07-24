@@ -560,6 +560,28 @@ class ExcelWidgetRedesigned(QWidget):
         """Toggle mapping panel visibility"""
         self.side_panel.toggle()
         
+    def refresh_current_data(self):
+        """Refresh current Excel data display"""
+        self.logger.info("Refreshing Excel data display")
+        
+        # If no data loaded, nothing to refresh
+        if not self.excel_manager._current_data:
+            self.logger.info("No Excel data loaded, skipping refresh")
+            return
+            
+        # Reload current data from file to get latest changes
+        try:
+            # Re-read the file to get updated data
+            self.excel_manager.reload_current_file()
+            
+            # Update the data table display
+            excel_data = self.excel_manager._current_data
+            if excel_data:
+                self.data_table.load_excel_data(excel_data)
+                self.logger.info(f"Excel data refreshed: {excel_data.row_count} rows")
+        except Exception as e:
+            self.logger.error(f"Failed to refresh Excel data: {e}")
+        
     def on_mapping_complete(self, sheet_name: str, mappings: list):
         """Handle mapping completion"""
         try:

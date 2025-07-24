@@ -91,19 +91,27 @@ class StepExecutor:
         if not text:
             return text
             
+        self.logger.debug(f"Substituting variables in text: {text}")
+        self.logger.debug(f"Variables dict: {self.variables}")
+            
         # Find all ${variable} patterns (common in Excel templates)
-        pattern = r'\$\{(\w+)\}'
+        pattern = r'\$\{([^}]+)\}'  # Changed to handle Korean characters
         
         def replacer(match):
             var_name = match.group(1)
+            self.logger.debug(f"Trying to replace variable: {var_name}")
             if var_name in self.variables:
-                return str(self.variables[var_name])
+                value = str(self.variables[var_name])
+                self.logger.debug(f"Replaced {var_name} with {value}")
+                return value
+            else:
+                self.logger.warning(f"Variable {var_name} not found in {list(self.variables.keys())}")
             return match.group(0)  # Keep original if not found
             
         result = re.sub(pattern, replacer, text)
         
         # Also support {{variable}} pattern for backward compatibility
-        pattern2 = r'\{\{(\w+)\}\}'
+        pattern2 = r'\{\{([^}]+)\}\}'
         result = re.sub(pattern2, replacer, result)
         
         return result
@@ -162,10 +170,14 @@ class StepExecutor:
     def _execute_keyboard_type(self, step) -> None:
         """Execute keyboard typing"""
         text = step.text
+        self.logger.info(f"Keyboard type step - Original text: {text}")
+        self.logger.info(f"Use variables: {step.use_variables}")
+        self.logger.info(f"Available variables: {list(self.variables.keys()) if self.variables else 'None'}")
         
         # Substitute variables if enabled
         if step.use_variables:
             text = self._substitute_variables(text)
+            self.logger.info(f"After substitution: {text}")
             
         pyautogui.typewrite(text, interval=step.interval)
         

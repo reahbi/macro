@@ -248,6 +248,9 @@ class ExecutionControlWidget(QWidget):
 class ExecutionWidget(QWidget):
     """Complete execution widget"""
     
+    # Signal emitted when Excel data should be refreshed
+    refreshExcelRequested = pyqtSignal()
+    
     def __init__(self, settings: Settings):
         super().__init__()
         self.settings = settings
@@ -587,6 +590,11 @@ class ExecutionWidget(QWidget):
         """Handle execution finished"""
         self.logger.info("Execution finished")
         self.timer.stop()
+        
+        # Request Excel data refresh if we were running with Excel
+        if self.excel_manager:
+            self.logger.info("Requesting Excel data refresh after execution")
+            self.refreshExcelRequested.emit()
         
     def _on_error(self, error_msg: str):
         """Handle execution error"""

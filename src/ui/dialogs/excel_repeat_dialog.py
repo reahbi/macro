@@ -24,6 +24,9 @@ class ExcelRepeatDialog(QDialog):
         self.setWindowTitle("Excel 반복 설정")
         self.setModal(True)
         self.setMinimumWidth(450)
+        # Prevent dialog from affecting parent window
+        self.setAttribute(Qt.WA_DeleteOnClose, False)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.init_ui()
         
     def init_ui(self):
@@ -148,6 +151,9 @@ class ExcelRepeatDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         
+        # Ensure dialog doesn't affect parent window
+        self.setAttribute(Qt.WA_DeleteOnClose, False)
+        
         # OK 버튼 텍스트 변경
         ok_button = buttons.button(QDialogButtonBox.Ok)
         ok_button.setText("확인")
@@ -200,6 +206,9 @@ class QuickExcelSetupDialog(QDialog):
         self.setWindowTitle("Excel 반복 블록")
         self.setModal(True)
         self.setMinimumWidth(400)
+        # Ensure dialog doesn't affect parent window
+        self.setAttribute(Qt.WA_DeleteOnClose, False)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.init_ui()
         
     def init_ui(self):
@@ -253,7 +262,7 @@ class QuickExcelSetupDialog(QDialog):
                 background-color: #1976D2;
             }
         """)
-        ok_button.clicked.connect(self.accept)
+        ok_button.clicked.connect(lambda: self.done(QDialog.Accepted))
         
         button_layout = QHBoxLayout()
         button_layout.addStretch()
