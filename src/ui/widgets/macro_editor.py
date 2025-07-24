@@ -598,9 +598,24 @@ class MacroFlowWidget(QWidget):
         """Handle step edit request"""
         if not step:
             return
+        
+        # Find the actual step in macro.steps by step_id
+        step_id = step.step_id
+        step_index = None
+        for i, macro_step in enumerate(self.macro.steps):
+            if macro_step.step_id == step_id:
+                step_index = i
+                break
+        
+        if step_index is None:
+            print(f"WARNING: Step {step_id} not found in macro")
+            return
+        
+        # Work directly with the step in macro.steps
+        step = self.macro.steps[step_index]
+        print(f"DEBUG: _on_step_edit using actual step from macro for type: {step.step_type}")
             
         try:
-            step_id = step.step_id  # Define step_id here
             print(f"DEBUG: _on_step_edit called for step type: {step.step_type}")
             
             # Open appropriate dialog based on step type
@@ -652,16 +667,40 @@ class MacroFlowWidget(QWidget):
                 if dialog.exec_() == QDialog.Accepted:
                     # Update step with new data
                     step_data = dialog.get_step_data()
+                    print(f"DEBUG [macro_editor]: Got step_data from dialog: {step_data}")
+                    print(f"DEBUG [macro_editor]: excel_column in step_data: '{step_data.get('excel_column')}' (type: {type(step_data.get('excel_column'))})")
+                    
                     step.name = step_data['name']
                     step.search_text = step_data['search_text']
                     step.excel_column = step_data['excel_column']
-                    print(f"DEBUG: Updated TextSearchStep - search_text='{step.search_text}', excel_column='{step.excel_column}'")
+                    
+                    # Debug logging with detailed information
+                    print(f"DEBUG: TextSearchStep update - name='{step.name}'")
+                    print(f"DEBUG: search_text='{step.search_text}' (type: {type(step.search_text)}, len: {len(step.search_text) if step.search_text else 0})")
+                    print(f"DEBUG: excel_column='{step.excel_column}' (type: {type(step.excel_column)}, is None: {step.excel_column is None})")
+                    
+                    # Set all other attributes
                     step.region = step_data['region']
+                    print(f"DEBUG: Setting step.region to: {step.region}")
                     step.exact_match = step_data['exact_match']
                     step.confidence = step_data['confidence']
                     step.click_on_found = step_data['click_on_found']
                     step.click_offset = step_data['click_offset']
                     step.double_click = step_data.get('double_click', False)
+                    step.normalize_text = step_data.get('normalize_text', False)
+                    
+                    # Validate the step immediately after update
+                    validation_errors = step.validate()
+                    if validation_errors:
+                        print(f"DEBUG: Step validation failed: {validation_errors}")
+                        print(f"DEBUG: Step attributes - search_text='{step.search_text}', excel_column='{step.excel_column}'")
+                    else:
+                        print("DEBUG: Step validation passed")
+                    
+                    # Since we're working directly with macro.steps[step_index], no need to verify
+                    print(f"DEBUG: Step updated in macro.steps[{step_index}]")
+                    print(f"DEBUG: Final values - excel_column: '{step.excel_column}', region: {step.region}")
+                    
                     self._rebuild_ui()
                     self.stepEdited.emit(step)
                     
@@ -993,7 +1032,16 @@ class MacroFlowWidget(QWidget):
                 self.stepAdded.emit(new_step, drop_index)
                 
                 # Automatically open configuration dialog for new step
+                print(f"DEBUG [dropEvent]: About to edit new step {new_step.step_id} of type {step_type}")
+                print(f"DEBUG [dropEvent]: Step attributes before edit - excel_column: {getattr(new_step, 'excel_column', 'N/A')}")
                 self._on_step_edit(new_step)
+                
+                # After edit, verify the step was updated in macro.steps
+                for idx, macro_step in enumerate(self.macro.steps):
+                    if macro_step.step_id == new_step.step_id:
+                        if step_type == StepType.OCR_TEXT:
+                            print(f"DEBUG [dropEvent]: After edit - excel_column in macro.steps: '{getattr(macro_step, 'excel_column', 'N/A')}'")
+                        break
                 
             elif event.mimeData().hasFormat("application/x-macrostep"):
                 # Moving existing step
@@ -1129,7 +1177,7 @@ class MacroEditorWidget(QWidget):
         self.flow_widget.stepAdded.connect(self._on_change)
         self.flow_widget.stepMoved.connect(self._on_change)
         self.flow_widget.stepDeleted.connect(self._on_change)
-        self.flow_widget.stepEdited.connect(self._on_step_edit)
+        self.flow_widget.stepEdited.connect(self._on_change)  # Changed: stepEdited should trigger _on_change, not _on_step_edit
         self.flow_widget.excelModeRequested.connect(self.excelModeRequested.emit)
         
         scroll.setWidget(self.flow_widget)
@@ -1159,6 +1207,10 @@ class MacroEditorWidget(QWidget):
         
     def _on_change(self):
         """Handle macro change"""
+        # Debug: Check TextSearchStep values before emitting
+        for step in self.flow_widget.macro.steps:
+            if step.step_type == StepType.OCR_TEXT:
+                print(f"DEBUG [_on_change]: TextSearchStep {step.step_id} - excel_column: '{step.excel_column}'")
         self.macroChanged.emit(self.flow_widget.macro)
         
     def _on_step_edit(self, step: MacroStep):

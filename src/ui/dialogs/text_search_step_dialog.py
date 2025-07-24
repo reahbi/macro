@@ -91,7 +91,11 @@ class TextSearchStepDialog(QDialog):
         excel_layout.setContentsMargins(0, 0, 0, 0)
         excel_layout.addWidget(QLabel("엑셀 열:"))
         self.excel_column_combo = QComboBox()
-        self.excel_column_combo.addItems(self.excel_columns)
+        # Add guidance message if no Excel columns available
+        if not self.excel_columns:
+            self.excel_column_combo.addItem("(엑셀 파일을 먼저 로드하세요)")
+        else:
+            self.excel_column_combo.addItems(self.excel_columns)
         excel_layout.addWidget(self.excel_column_combo)
         self.excel_column_widget.setLayout(excel_layout)
         self.excel_column_widget.setVisible(False)
@@ -100,6 +104,7 @@ class TextSearchStepDialog(QDialog):
         # Connect radio buttons to show/hide widgets
         self.fixed_text_radio.toggled.connect(self.fixed_text_widget.setVisible)
         self.excel_column_radio.toggled.connect(self.excel_column_widget.setVisible)
+        self.excel_column_radio.toggled.connect(self._on_excel_column_toggled)
         
         search_group.setLayout(search_layout)
         layout.addWidget(search_group)
@@ -127,7 +132,7 @@ class TextSearchStepDialog(QDialog):
                 f"영역: ({self.region[0]}, {self.region[1]}) "
                 f"크기: {self.region[2]}x{self.region[3]}"
             )
-            self.search_scope_combo.setCurrentIndex(2)  # Set to "특정 영역 선택"
+            self.search_scope_combo.setCurrentIndex(len(self.monitors) + 1)  # Set to "특정 영역 선택"
         region_layout.addWidget(self.region_label)
         
         # Region buttons
@@ -171,6 +176,13 @@ class TextSearchStepDialog(QDialog):
         self.confidence_spin.setValue(0.5)
         self.confidence_spin.setToolTip("OCR 인식 신뢰도 (0.0~1.0)")
         options_layout.addRow("인식 신뢰도:", self.confidence_spin)
+        
+        self.normalize_text_check = QCheckBox("특수 문자 정규화")
+        self.normalize_text_check.setToolTip(
+            "체크 시: 전각 문자를 반각으로 변환\n"
+            "예: '：' → ':', '（）' → '()', '　' → ' '"
+        )
+        options_layout.addRow("텍스트 처리:", self.normalize_text_check)
         
         options_group.setLayout(options_layout)
         layout.addWidget(options_group)
@@ -239,53 +251,157 @@ class TextSearchStepDialog(QDialog):
         layout.addWidget(buttons)
         
         self.setLayout(layout)
+    
+    def accept(self):
+        """Validate dialog before accepting"""
+        # Check if Excel column is selected but empty
+        if self.excel_column_radio.isChecked():
+            if not self.excel_column_combo.currentText() or self.excel_column_combo.currentText() == "(엑셀 파일을 먼저 로드하세요)":
+                QMessageBox.warning(self, "경고", 
+                    "엑셀 열을 선택하세요.\n\n"
+                    "엑셀 파일이 로드되지 않았다면,\n"
+                    "먼저 엑셀 탭에서 파일을 불러오세요.")
+                return
+        elif self.fixed_text_radio.isChecked():
+            if not self.search_text_edit.text().strip():
+                QMessageBox.warning(self, "경고", "검색할 텍스트를 입력하세요.")
+                return
+        
+        # Update step with current dialog values before accepting
+        self._update_step_from_dialog()
+        
+        # All validations passed, accept the dialog
+        super().accept()
+    
+    def _update_step_from_dialog(self):
+        """Update step object with current dialog values"""
+        print(f"DEBUG: _update_step_from_dialog called, current region: {self.region}")
+        
+        # Update basic properties
+        self.step.name = self.name_edit.text()
+        
+        # Update search text/column
+        if self.fixed_text_radio.isChecked():
+            self.step.search_text = self.search_text_edit.text()
+            self.step.excel_column = None
+        else:
+            # Convert Excel column to variable format like KeyboardTypeStep
+            column_text = self.excel_column_combo.currentText()
+            # Remove any error suffixes
+            if column_text.endswith(" (열을 찾을 수 없음)"):
+                column_text = column_text.replace(" (열을 찾을 수 없음)", "")
+            self.step.search_text = f"${{{column_text}}}"
+            self.step.excel_column = None  # Don't store separately
+        
+        # Update region - CRITICAL
+        self.step.region = self.region
+        print(f"DEBUG: Updated step.region to: {self.step.region}")
+        
+        # Update matching options
+        self.step.exact_match = self.exact_match_check.isChecked()
+        self.step.confidence = self.confidence_spin.value()
+        self.step.normalize_text = self.normalize_text_check.isChecked()
+        
+        # Update click options
+        self.step.click_on_found = self.click_on_found_check.isChecked()
+        self.step.click_offset = (self.offset_x_spin.value(), self.offset_y_spin.value())
+        self.step.double_click = (self.click_type_combo.currentIndex() == 1)
+        
+        print(f"DEBUG: Step updated - region: {self.step.region}, search_text: {self.step.search_text}")
+    
+    def _on_excel_column_toggled(self, checked):
+        """Handle Excel column radio button toggle"""
+        if checked and not self.excel_columns:
+            # Show a message if no Excel columns are available
+            QMessageBox.information(self, "알림", 
+                "엑셀 열을 사용하려면 먼저 엑셀 파일을 로드해야 합니다.\n\n"
+                "1. 엑셀 탭으로 이동하세요\n"
+                "2. 엑셀 파일을 불러오세요\n"
+                "3. 다시 이 설정으로 돌아와서 엑셀 열을 선택하세요")
         
     def load_step_data(self):
         """Load data from step"""
         self._loading_data = True  # Set flag to prevent region reset
         
+        # Refresh region from step to ensure we have the latest data
+        # Convert list to tuple if needed for consistency
+        if self.step.region:
+            self.region = tuple(self.step.region) if isinstance(self.step.region, list) else self.step.region
+        else:
+            self.region = None
+        print(f"DEBUG [load_step_data]: Loading step data - region: {self.region} (type: {type(self.region)})")
+        
         self.name_edit.setText(self.step.name)
         
         # Set search method
-        if self.step.excel_column:
+        # Check if search_text contains variable reference
+        import re
+        variable_pattern = r'^\$\{([^}]+)\}$'
+        variable_match = re.match(variable_pattern, self.step.search_text) if self.step.search_text else None
+        
+        if self.step.excel_column or variable_match:
             self.excel_column_radio.setChecked(True)
-            # Find and select the column
-            index = self.excel_column_combo.findText(self.step.excel_column)
-            if index >= 0:
-                self.excel_column_combo.setCurrentIndex(index)
+            # Determine column name
+            column_name = self.step.excel_column
+            if not column_name and variable_match:
+                # Extract column name from variable format
+                column_name = variable_match.group(1)
+                print(f"DEBUG [load_step_data]: Extracted column name '{column_name}' from search_text '{self.step.search_text}'")
+            
+            if column_name:
+                # Find and select the column
+                index = self.excel_column_combo.findText(column_name)
+                if index >= 0:
+                    self.excel_column_combo.setCurrentIndex(index)
+                else:
+                    # Column not found in current Excel file
+                    if self.excel_columns:
+                        # Add the missing column temporarily to preserve the setting
+                        self.excel_column_combo.addItem(f"{column_name} (열을 찾을 수 없음)")
+                        self.excel_column_combo.setCurrentText(f"{column_name} (열을 찾을 수 없음)")
         else:
             self.fixed_text_radio.setChecked(True)
             self.search_text_edit.setText(self.step.search_text)
         
         # Set search scope based on region
-        if self.region:
-            # Check if region matches any monitor exactly
-            matched_monitor_index = None
-            for i, monitor in enumerate(self.monitors):
-                if (self.region[0] == monitor['x'] and
-                    self.region[1] == monitor['y'] and
-                    self.region[2] == monitor['width'] and
-                    self.region[3] == monitor['height']):
-                    matched_monitor_index = i + 1  # +1 because index 0 is "전체 화면"
-                    break
-            
-            if matched_monitor_index:
-                self.search_scope_combo.setCurrentIndex(matched_monitor_index)
+        try:
+            if self.region:
+                # Check if region matches any monitor exactly
+                matched_monitor_index = None
+                for i, monitor in enumerate(self.monitors):
+                    if (self.region[0] == monitor['x'] and
+                        self.region[1] == monitor['y'] and
+                        self.region[2] == monitor['width'] and
+                        self.region[3] == monitor['height']):
+                        matched_monitor_index = i + 1  # +1 because index 0 is "전체 화면"
+                        break
+                
+                if matched_monitor_index:
+                    self.search_scope_combo.setCurrentIndex(matched_monitor_index)
+                else:
+                    # Custom region
+                    self.search_scope_combo.setCurrentIndex(len(self.monitors) + 1)  # Last option
+                    # Ensure region label is updated for custom region
+                    self.region_label.setText(
+                        f"영역: ({self.region[0]}, {self.region[1]}) "
+                        f"크기: {self.region[2]}x{self.region[3]}"
+                    )
+                    # Only set visibility if widget exists
+                    if hasattr(self, 'region_buttons_widget'):
+                        self.region_buttons_widget.setVisible(True)
             else:
-                # Custom region
-                self.search_scope_combo.setCurrentIndex(len(self.monitors) + 1)  # Last option
-                # Ensure region label is updated for custom region
-                self.region_label.setText(
-                    f"영역: ({self.region[0]}, {self.region[1]}) "
-                    f"크기: {self.region[2]}x{self.region[3]}"
-                )
-                self.region_buttons_widget.setVisible(True)
-        else:
-            self.search_scope_combo.setCurrentIndex(0)  # 전체 화면
+                self.search_scope_combo.setCurrentIndex(0)  # 전체 화면
+        except Exception as e:
+            print(f"ERROR [load_step_data]: Failed to set search scope - {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback to full screen
+            self.search_scope_combo.setCurrentIndex(0)
         
         # Set options
         self.exact_match_check.setChecked(self.step.exact_match)
         self.confidence_spin.setValue(self.step.confidence)
+        self.normalize_text_check.setChecked(getattr(self.step, 'normalize_text', False))
         self.click_on_found_check.setChecked(self.step.click_on_found)
         self.offset_x_spin.setValue(self.step.click_offset[0])
         self.offset_y_spin.setValue(self.step.click_offset[1])
@@ -378,11 +494,24 @@ class TextSearchStepDialog(QDialog):
             print("DEBUG: Creating ROI selector")
             # Create ROI selector with monitor bounds if available
             monitor_bounds = getattr(self, '_selected_monitor_bounds', None)
+            print(f"DEBUG: monitor_bounds: {monitor_bounds}")
             self.roi_selector = ROISelectorOverlay(parent=None, monitor_bounds=monitor_bounds)
+            print(f"DEBUG: ROI selector created: {self.roi_selector}")
+            
+            # Connect signals
+            print("DEBUG: Connecting selectionComplete signal")
             self.roi_selector.selectionComplete.connect(self._on_region_selected)
+            print("DEBUG: selectionComplete connected")
+            
+            print("DEBUG: Connecting selectionCancelled signal")
             self.roi_selector.selectionCancelled.connect(lambda: self.show())
+            print("DEBUG: selectionCancelled connected")
+            
             print("DEBUG: Starting ROI selection")
             self.roi_selector.start_selection()
+            print("DEBUG: start_selection() called")
+            # Don't call show() separately - start_selection() already calls exec_()
+            
         except Exception as e:
             print(f"DEBUG: Error in _show_region_selector: {e}")
             import traceback
@@ -396,24 +525,30 @@ class TextSearchStepDialog(QDialog):
         
     def _on_region_selected(self, region: Tuple[int, int, int, int]):
         """Handle region selection"""
+        print(f"DEBUG: _on_region_selected called with region: {region}, type: {type(region)}")
         try:
             # Ensure region is properly formatted
             if region and len(region) == 4:
                 # Convert all values to integers to avoid any type issues
                 formatted_region = tuple(int(x) for x in region)
                 self.region = formatted_region
+                print(f"DEBUG: set region successful with formatted region: {formatted_region}")
                 self.region_label.setText(
                     f"영역: ({formatted_region[0]}, {formatted_region[1]}) "
                     f"크기: {formatted_region[2]}x{formatted_region[3]}"
                 )
+                print(f"DEBUG: region_label updated")
             else:
+                print(f"DEBUG: Invalid region: {region}")
                 self.region = None
                 self.region_label.setText("전체 화면")
             
+            print(f"DEBUG: About to restore dialog visibility")
             # Restore dialog visibility
             self.show()
             self.raise_()
             self.activateWindow()
+            print(f"DEBUG: Dialog visibility restored")
         except Exception as e:
             print(f"DEBUG: Error in _on_region_selected: {e}")
             import traceback
@@ -428,7 +563,7 @@ class TextSearchStepDialog(QDialog):
         self.region = None
         self.region_label.setText("영역을 선택하세요")
         # Keep the scope combo at "특정 영역 선택"
-        self.search_scope_combo.setCurrentIndex(2)
+        self.search_scope_combo.setCurrentIndex(len(self.monitors) + 1)
         
     def _preview_region(self):
         """Preview selected region"""
@@ -527,6 +662,11 @@ class TextSearchStepDialog(QDialog):
         # Don't reset region if we're loading data
         if self._loading_data:
             return
+        
+        # Check if widgets are initialized
+        if not hasattr(self, 'region_buttons_widget'):
+            print("DEBUG: region_buttons_widget not yet initialized, skipping")
+            return
             
         if index == 0:  # 전체 화면 (모든 모니터)
             self.region = None
@@ -575,8 +715,15 @@ class TextSearchStepDialog(QDialog):
             )
             self.region_buttons_widget.setVisible(False)
         else:  # 특정 영역 선택
+            print(f"DEBUG [_on_search_scope_changed]: Custom region selected, current region: {self.region}")
             if not self.region:
                 self.region_label.setText("영역을 선택하세요")
+            else:
+                # Update label with current region
+                self.region_label.setText(
+                    f"영역: ({self.region[0]}, {self.region[1]}) "
+                    f"크기: {self.region[2]}x{self.region[3]}"
+                )
             self.region_buttons_widget.setVisible(True)
         
     def _test_search(self):
@@ -762,14 +909,47 @@ class TextSearchStepDialog(QDialog):
         
     def get_step_data(self) -> Dict[str, Any]:
         """Get step configuration data"""
-        return {
+        # Get excel column value, ensuring it's valid
+        excel_column = None
+        if self.excel_column_radio.isChecked():
+            column_text = self.excel_column_combo.currentText()
+            print(f"DEBUG [get_step_data]: Excel column radio checked, combo text: '{column_text}'")
+            # Only set excel_column if it's a valid column name (not placeholder text)
+            if column_text and column_text != "(엑셀 파일을 먼저 로드하세요)":
+                # Remove the "(열을 찾을 수 없음)" suffix if present
+                if column_text.endswith(" (열을 찾을 수 없음)"):
+                    excel_column = column_text.replace(" (열을 찾을 수 없음)", "")
+                    print(f"DEBUG [get_step_data]: Stripped suffix, excel_column: '{excel_column}'")
+                else:
+                    excel_column = column_text
+                    print(f"DEBUG [get_step_data]: Using column as-is: '{excel_column}'")
+            else:
+                print(f"DEBUG [get_step_data]: Invalid column text, setting to None")
+        else:
+            print(f"DEBUG [get_step_data]: Fixed text radio checked")
+        
+        # KeyboardTypeStep처럼 Excel 열을 변수 형식으로 search_text에 저장
+        search_text = ""
+        if self.fixed_text_radio.isChecked():
+            search_text = self.search_text_edit.text()
+        elif excel_column:
+            # Excel 열이 선택된 경우, 변수 형식으로 변환
+            search_text = f"${{{excel_column}}}"
+            print(f"DEBUG [get_step_data]: Converting excel_column '{excel_column}' to variable format: '{search_text}'")
+        
+        result = {
             'name': self.name_edit.text() or "텍스트 검색",
-            'search_text': self.search_text_edit.text() if self.fixed_text_radio.isChecked() else "",
-            'excel_column': self.excel_column_combo.currentText() if self.excel_column_radio.isChecked() else None,
+            'search_text': search_text,  # Excel 열도 변수 형식으로 여기에 저장
+            'excel_column': excel_column,  # 호환성을 위해 유지
             'region': self.region,
             'exact_match': self.exact_match_check.isChecked(),
             'confidence': self.confidence_spin.value(),
+            'normalize_text': self.normalize_text_check.isChecked(),
             'click_on_found': self.click_on_found_check.isChecked(),
             'click_offset': (self.offset_x_spin.value(), self.offset_y_spin.value()),
             'double_click': self.click_type_combo.currentIndex() == 1  # True if "더블 클릭" selected
         }
+        
+        print(f"DEBUG [get_step_data]: Returning data with excel_column: '{result['excel_column']}'")
+        print(f"DEBUG [get_step_data]: Returning data with region: {result['region']}")
+        return result

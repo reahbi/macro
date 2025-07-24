@@ -142,7 +142,11 @@ class ROISelectorOverlay(QDialog):
             # Emit result if selection is valid
             if w > 5 and h > 5:
                 region = (int(x), int(y), int(w), int(h))
+                print(f"DEBUG: ROI selection complete with region: {region}, type: {type(region)}")
                 self.selectionComplete.emit(region)
+                print(f"DEBUG: selectionComplete signal emitted with region: {region}")
+            else:
+                print(f"DEBUG: ROI selection too small: w={w}, h={h}")
             
             self.close()
             
