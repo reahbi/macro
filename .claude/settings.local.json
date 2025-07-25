@@ -29,7 +29,17 @@
       "Bash(copy executor.py executor_backup.py)",
       "Bash(copy executor_fixed.py executor.py)",
       "Bash(cp:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(RUN_SIMPLE.bat)",
+      "Bash(./venv313/Scripts/python.exe test_text_search_fix.py:*)",
+      "Bash(pip show:*)",
+      "Bash(venv311Scriptspip show paddleocr)",
+      "Bash(venv311\\\\Scripts\\\\pip show:*)",
+      "mcp__Context7__resolve-library-id",
+      "mcp__Context7__get-library-docs",
+      "WebFetch(domain:paddlepaddle.github.io)",
+      "Bash(venv311\\\\Scripts\\\\python.exe test_ocr_debug.py:*)",
+      "Bash(cd:*)"
     ],
     "deny": []
   }

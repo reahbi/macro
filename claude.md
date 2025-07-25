@@ -16,9 +16,9 @@ RUN_SIMPLE.bat
 # Python direct execution - handles import fixing automatically
 python run_main.py
 
-# Alternative launchers with specific Python versions
-RUN_PY313.bat  # Python 3.13
-RUN_AUTO_VENV.bat  # Auto-detect venv
+# Alternative launchers
+RUN_PY311.bat  # Python 3.11 (Direct)
+RUN_AUTO_VENV.bat  # Auto-detect venv (Recommended)
 ```
 
 ### Development Commands
@@ -193,3 +193,27 @@ def create_step(step_type: StepType) -> MacroStep:
 3. **재사용성** - 중복 코드를 피하고 재사용 가능한 컴포넌트로 만듭니다
 4. **예외 처리** - 모든 예외 상황을 고려하여 처리합니다
 5. **로깅** - 디버깅에 필요한 충분한 로그를 남깁니다
+
+## OCR 엔진 정보
+
+### PaddleOCR
+- 한국어 텍스트 인식에 최적화
+- 빠르고 가벼운 성능
+- Python 3.8 ~ 3.11 지원 (Python 3.11 권장)
+- 자동 설치 지원
+
+## Python 버전 정보
+
+### 지원 버전
+- **권장**: Python 3.11 (최적 성능 및 완전 호환)
+- **지원**: Python 3.8, 3.9, 3.10
+- **미지원**: Python 3.12, 3.13 (PaddleOCR 미지원)
+
+### 가상환경 설정
+```bash
+# Python 3.11 가상환경 생성 (권장)
+SETUP_VENV311.bat
+
+# 가상환경으로 실행
+RUN_AUTO_VENV.bat
+```

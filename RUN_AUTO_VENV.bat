@@ -5,10 +5,10 @@ echo Excel Macro Automation - Auto Virtual Environment Runner
 echo ========================================================
 echo.
 
-REM Try venv313 first (Python 3.13)
-if exist venv313\Scripts\activate.bat (
-    echo Found venv313 virtual environment
-    call venv313\Scripts\activate.bat
+REM Try venv311 first (Python 3.11 - Default)
+if exist venv311\Scripts\activate.bat (
+    echo Found venv311 virtual environment (Python 3.11)
+    call venv311\Scripts\activate.bat
     goto run_app
 )
 
@@ -30,7 +30,7 @@ REM No virtual environment found
 echo ERROR: No virtual environment found!
 echo.
 echo Please run one of the following:
-echo   - SETUP_VENV313.bat (for Python 3.13)
+echo   - SETUP_VENV311.bat (for Python 3.11 - Default)
 echo   - SETUP_CLEAN.bat (for clean setup)
 echo   - INSTALL_DEPENDENCIES.bat (to install in current environment)
 echo.

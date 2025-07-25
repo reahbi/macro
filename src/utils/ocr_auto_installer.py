@@ -1,5 +1,6 @@
 """
 Automatic OCR installer for Excel Macro Automation
+PaddleOCR installation only
 """
 
 import subprocess
@@ -22,50 +23,54 @@ class AutoOCRInstaller(QThread):
         self.status_file = self.ocr_path / "status.json"
         
     def run(self):
-        """OCR 자동 설치 실행"""
+        """PaddleOCR 자동 설치 실행"""
         try:
             # 1. pip 업그레이드
             self.progress.emit(5, "pip 업그레이드 중...")
             self._run_pip_command([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
             
-            # 2. PyTorch CPU 설치
-            self.progress.emit(10, "PyTorch CPU 버전 설치 중... (약 150MB)")
+            # 2. Python 버전 확인
+            python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+            if python_version not in ["3.8", "3.9", "3.10", "3.11"]:
+                raise Exception(f"PaddleOCR는 Python 3.8 ~ 3.11을 지원합니다. 현재 버전: {python_version}")
+            
+            # 3. PaddlePaddle 설치 (CPU 버전)
+            self.progress.emit(20, "PaddlePaddle 설치 중... (약 500MB)")
             self._run_pip_command([
                 sys.executable, "-m", "pip", "install", 
-                "torch", "torchvision", "torchaudio",
-                "--index-url", "https://download.pytorch.org/whl/cpu"
+                "paddlepaddle>=2.5.0", "-i", "https://pypi.tuna.tsinghua.edu.cn/simple"
             ])
             
-            # 3. EasyOCR 설치
-            self.progress.emit(50, "EasyOCR 설치 중...")
+            # 4. PaddleOCR 설치
+            self.progress.emit(60, "PaddleOCR 설치 중...")
             self._run_pip_command([
-                sys.executable, "-m", "pip", "install", "easyocr"
+                sys.executable, "-m", "pip", "install", "paddleocr>=2.7.0"
             ])
             
-            # 4. 추가 의존성
+            # 5. 추가 의존성
             self.progress.emit(70, "추가 구성요소 설치 중...")
             self._run_pip_command([
                 sys.executable, "-m", "pip", "install",
-                "opencv-python-headless", "pillow", "scipy"
+                "opencv-python", "pillow", "numpy"
             ])
             
-            # 5. OCR 초기화 및 모델 다운로드
-            self.progress.emit(80, "OCR 모델 다운로드 중... (한국어/영어)")
-            self._initialize_ocr()
+            # 6. OCR 초기화 및 모델 다운로드
+            self.progress.emit(80, "OCR 모델 다운로드 중... (한국어)")
+            self._initialize_paddleocr()
             
-            # 6. 설치 완료 표시
+            # 7. 설치 완료 표시
             self._save_status("installed")
             self.progress.emit(100, "설치 완료!")
-            self.finished.emit(True, "EasyOCR이 성공적으로 설치되었습니다.")
+            self.finished.emit(True, "PaddleOCR이 성공적으로 설치되었습니다.")
             
         except subprocess.CalledProcessError as e:
             error_msg = f"패키지 설치 실패: {e}"
-            self._save_status("failed", error_msg)
+            self._save_status("failed", error=error_msg)
             self.finished.emit(False, error_msg)
             
         except Exception as e:
             error_msg = f"설치 중 오류 발생: {str(e)}"
-            self._save_status("failed", error_msg)
+            self._save_status("failed", error=error_msg)
             self.finished.emit(False, error_msg)
     
     def _run_pip_command(self, command):
@@ -94,14 +99,20 @@ class AutoOCRInstaller(QThread):
             
         return stdout
     
-    def _initialize_ocr(self):
-        """OCR 초기화 및 모델 다운로드"""
+    def _initialize_paddleocr(self):
+        """PaddleOCR 초기화 및 모델 다운로드"""
         init_code = """
-import easyocr
+from paddleocr import PaddleOCR
 import os
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
-reader = easyocr.Reader(['ko', 'en'], gpu=False, download_enabled=True)
-print("OCR initialized successfully")
+# 로그 레벨 설정
+os.environ['PPOCR_DEBUG'] = '0'
+# 한국어 OCR 초기화 (모델 자동 다운로드)
+# PaddleOCR 2.7.0에서는 lang='korean' 지정 시 자동으로 적절한 모델 사용
+ocr = PaddleOCR(
+    lang='korean',              # 한국어 모델
+    use_angle_cls=True         # 텍스트 각도 분류
+)
+print("PaddleOCR initialized successfully")
 """
         
         # Python 스크립트로 실행
@@ -112,13 +123,14 @@ print("OCR initialized successfully")
         )
         
         if result.returncode != 0:
-            raise Exception(f"OCR 초기화 실패: {result.stderr}")
+            raise Exception(f"PaddleOCR 초기화 실패: {result.stderr}")
     
     def _save_status(self, status, error=None):
         """설치 상태 저장"""
         status_data = {
             "status": status,
-            "version": "1.0.0",
+            "ocr_type": "paddleocr",
+            "version": "2.0.0",
             "timestamp": time.time()
         }
         

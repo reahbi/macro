@@ -7,6 +7,8 @@ import time
 import os
 from typing import Dict, Any, Optional, Tuple
 import pyautogui
+import random
+import math
 from core.macro_types import MacroStep, StepType
 from config.settings import Settings
 from logger.app_logger import get_logger
@@ -18,6 +20,14 @@ class StepExecutor:
         self.settings = settings
         self.logger = get_logger(__name__)
         self.variables: Dict[str, Any] = {}
+        
+        # Human-like movement settings from config
+        human_config = settings.get("execution", {}).get("human_like_movement", {})
+        self.enable_human_movement = human_config.get("enabled", True)
+        self.min_move_duration = human_config.get("min_move_duration", 0.3)
+        self.max_move_duration = human_config.get("max_move_duration", 1.5)
+        self.click_delay_min = human_config.get("click_delay_min", 0.1)
+        self.click_delay_max = human_config.get("click_delay_max", 0.3)
         
         # Initialize image matcher
         self._image_matcher = None
@@ -59,12 +69,12 @@ class StepExecutor:
     def _init_text_extractor(self):
         """Initialize text extractor"""
         try:
-            from vision.text_extractor import TextExtractor
-            self._text_extractor = TextExtractor()
-            self.logger.info("Using EasyOCR-based text extractor")
+            from vision.text_extractor_paddle import PaddleTextExtractor
+            self._text_extractor = PaddleTextExtractor()
+            self.logger.info("Using PaddleOCR-based text extractor")
         except Exception as e:
-            self.logger.warning(f"Text extraction not available: {e}")
-            self.logger.warning("Text search features will be disabled")
+            self.logger.error(f"PaddleOCR initialization failed: {e}")
+            self.logger.error("Text search features will be disabled. Please install PaddleOCR.")
             self._text_extractor = None
         
     def set_variables(self, variables: Dict[str, Any]):
@@ -131,28 +141,124 @@ class StepExecutor:
         else:
             return x, y
             
+    def _human_like_mouse_move(self, x: int, y: int, duration: Optional[float] = None) -> None:
+        """
+        사람처럼 자연스러운 마우스 움직임
+        
+        Args:
+            x: 목표 X 좌표
+            y: 목표 Y 좌표
+            duration: 이동 시간 (None이면 거리 기반 자동 계산)
+        """
+        if not self.enable_human_movement:
+            # 사람 같은 움직임 비활성화 시 즉시 이동
+            pyautogui.moveTo(x, y)
+            return
+            
+        # 현재 마우스 위치
+        current_x, current_y = pyautogui.position()
+        
+        # 거리 계산
+        distance = math.sqrt((x - current_x)**2 + (y - current_y)**2)
+        
+        if duration is None:
+            # 거리에 따른 자동 duration 계산
+            # 가까운 거리는 빠르게, 먼 거리는 천천히
+            duration = min(self.max_move_duration, 
+                         max(self.min_move_duration, distance / 500))
+            
+            # 약간의 랜덤성 추가
+            duration += random.uniform(-0.1, 0.1)
+            duration = max(self.min_move_duration, duration)
+        
+        # 베지어 곡선을 사용한 자연스러운 이동
+        # pyautogui의 tween 함수 사용
+        tween_functions = [
+            pyautogui.easeInOutQuad,
+            pyautogui.easeInQuad,
+            pyautogui.easeOutQuad,
+        ]
+        
+        # 랜덤하게 이동 스타일 선택
+        tween = random.choice(tween_functions)
+        
+        # 마우스 이동
+        try:
+            pyautogui.moveTo(x, y, duration=duration, tween=tween)
+            
+            # 아주 짧은 랜덤 딜레이 (마우스가 도착한 후 잠시 멈춤)
+            time.sleep(random.uniform(0.05, 0.15))
+            
+        except Exception as e:
+            self.logger.warning(f"Human-like mouse move failed: {e}, falling back to instant move")
+            pyautogui.moveTo(x, y)
+    
+    def _click_with_human_delay(self, x: int, y: int, button: str = 'left', 
+                               double_click: bool = False) -> None:
+        """
+        사람처럼 자연스러운 클릭 (이동 후 짧은 대기 포함)
+        
+        Args:
+            x: 클릭할 X 좌표
+            y: 클릭할 Y 좌표
+            button: 마우스 버튼 ('left', 'right', 'middle')
+            double_click: 더블클릭 여부
+        """
+        # 먼저 마우스를 자연스럽게 이동
+        self._human_like_mouse_move(x, y)
+        
+        if self.enable_human_movement:
+            # 클릭 전 짧은 랜덤 대기
+            delay = random.uniform(self.click_delay_min, self.click_delay_max)
+            time.sleep(delay)
+        
+        # 클릭 수행
+        if double_click:
+            # 더블클릭 간격도 자연스럽게
+            pyautogui.click(x, y, button=button)
+            time.sleep(random.uniform(0.1, 0.2))
+            pyautogui.click(x, y, button=button)
+        else:
+            pyautogui.click(x, y, button=button)
+            
+        # 클릭 후 아주 짧은 대기
+        if self.enable_human_movement:
+            time.sleep(random.uniform(0.05, 0.1))
+            
     # Mouse handlers
     
     def _execute_mouse_click(self, step) -> None:
         """Execute mouse click"""
         x, y = self._get_absolute_position(step.x, step.y, step.relative_to)
         
-        pyautogui.click(
-            x=x,
-            y=y,
-            clicks=step.clicks,
-            interval=step.interval,
-            button=step.button.value
-        )
+        # 단일 클릭인 경우 사람처럼 자연스럽게
+        if step.clicks == 1:
+            self._click_with_human_delay(x, y, button=step.button.value)
+        else:
+            # 여러 번 클릭인 경우 먼저 이동 후 클릭
+            self._human_like_mouse_move(x, y)
+            
+            if self.enable_human_movement:
+                time.sleep(random.uniform(self.click_delay_min, self.click_delay_max))
+            
+            pyautogui.click(
+                x=x,
+                y=y,
+                clicks=step.clicks,
+                interval=step.interval,
+                button=step.button.value
+            )
         
     def _execute_mouse_move(self, step) -> None:
         """Execute mouse move"""
         x, y = self._get_absolute_position(step.x, step.y, step.relative_to)
         
         if step.duration > 0:
-            pyautogui.moveTo(x, y, duration=step.duration)
+            # 사용자가 지정한 duration이 있으면 그대로 사용
+            self._human_like_mouse_move(x, y, duration=step.duration)
         else:
-            pyautogui.moveTo(x, y)
+            # 사용자가 지정하지 않았으면 자동 계산된 자연스러운 이동
+            self._human_like_mouse_move(x, y)
             
     def _execute_mouse_drag(self, step) -> None:
         """Execute mouse drag"""
@@ -306,19 +412,22 @@ class StepExecutor:
             
             self.logger.info(f"Clicking at ({click_x}, {click_y})")
             
-            # Perform click
+            # Perform click with human-like movement
+            self._click_with_human_delay(click_x, click_y, double_click=step.double_click)
+            
             if step.double_click:
-                pyautogui.doubleClick(click_x, click_y)
-                self.logger.debug("Performed double click")
+                self.logger.debug("Performed double click with human-like movement")
             else:
-                pyautogui.click(click_x, click_y)
-                self.logger.debug("Performed single click")
+                self.logger.debug("Performed single click with human-like movement")
                 
         return location
             
     def _execute_text_search(self, step) -> Optional[Tuple[int, int]]:
         """Execute text search and optionally click"""
         try:
+            # Screen stabilization delay
+            time.sleep(0.5)  # 500ms delay for screen to stabilize
+            
             if not self._text_extractor:
                 # OCR이 설치되지 않은 경우 사용자에게 알림
                 from utils.ocr_manager import OCRManager
@@ -371,12 +480,20 @@ class StepExecutor:
                 # Handle Excel column reference for TextSearchStep
                 excel_column = getattr(step, 'excel_column', None)
                 if excel_column and (not search_text or search_text == ''):
-                    if excel_column in self.variables:
+                    # Debug logging
+                    self.logger.debug(f"Excel column specified: '{excel_column}'")
+                    self.logger.debug(f"Available variables: {list(self.variables.keys()) if self.variables else 'None'}")
+                    
+                    if not self.variables:
+                        raise ValueError(f"엑셀 열 '{excel_column}'을(를) 사용하려고 했지만, 현재 엑셀 데이터가 없습니다. "
+                                       f"이 단계가 Excel 반복 블록 안에 있는지 확인하세요.")
+                    elif excel_column in self.variables:
                         search_text = str(self.variables[excel_column])
                         self.logger.debug(f"Using Excel data from column '{excel_column}': {search_text}")
                     else:
-                        available_cols = list(self.variables.keys()) if self.variables else []
-                        raise ValueError(f"Excel column '{excel_column}' not found in row data. Available columns: {available_cols}")
+                        available_cols = list(self.variables.keys())
+                        raise ValueError(f"엑셀 열 '{excel_column}'을(를) 현재 행 데이터에서 찾을 수 없습니다. "
+                                       f"사용 가능한 열: {available_cols}")
             else:
                 # Legacy or unknown step type
                 search_text = getattr(step, 'text', getattr(step, 'search_text', ''))
@@ -401,20 +518,85 @@ class StepExecutor:
             # Replace variables in search text
             search_text = self._substitute_variables(search_text)
             
+            # Text preprocessing for special characters
+            normalize_text = getattr(step, 'normalize_text', False)
+            if normalize_text:
+                # Full-width to half-width conversion
+                search_text = search_text.replace('：', ':')  # Full-width colon
+                search_text = search_text.replace('；', ';')  # Full-width semicolon
+                search_text = search_text.replace('（', '(')  # Full-width left parenthesis
+                search_text = search_text.replace('）', ')')  # Full-width right parenthesis
+                search_text = search_text.replace('［', '[')  # Full-width left bracket
+                search_text = search_text.replace('］', ']')  # Full-width right bracket
+                search_text = search_text.replace('｛', '{')  # Full-width left brace
+                search_text = search_text.replace('｝', '}')  # Full-width right brace
+                search_text = search_text.replace('＜', '<')  # Full-width less than
+                search_text = search_text.replace('＞', '>')  # Full-width greater than
+                search_text = search_text.replace('，', ',')  # Full-width comma
+                search_text = search_text.replace('。', '.')  # Full-width period
+                search_text = search_text.replace('！', '!')  # Full-width exclamation
+                search_text = search_text.replace('？', '?')  # Full-width question mark
+                search_text = search_text.replace('　', ' ')  # Full-width space
+                self.logger.debug(f"Normalized text: {search_text}")
+            
+            # Trim whitespace
+            search_text = search_text.strip()
+            
             # Log search (mask if sensitive)
             if mask_in_logs:
                 self.logger.info("Searching for text: [MASKED]")
             else:
                 self.logger.info(f"Searching for text: {search_text}")
             
-            # Find text on screen
-            exact_match = getattr(step, 'exact_match', False)
-            result = self._text_extractor.find_text(
-                search_text,
-                region=region,
-                exact_match=exact_match,
-                confidence_threshold=confidence
-            )
+            # Debug logging
+            debug_mode = False
+            if hasattr(self, 'settings') and hasattr(self.settings, 'debug_mode'):
+                debug_mode = self.settings.debug_mode
+            
+            if debug_mode:
+                self.logger.debug(f"텍스트 검색 시작: '{search_text}'")
+                self.logger.debug(f"옵션: exact_match={getattr(step, 'exact_match', False)}, confidence={confidence}")
+                self.logger.debug(f"영역: {region if region else '전체 화면'}")
+                self.logger.debug(f"클릭 옵션: click_on_found={click_on_found}, offset={click_offset if 'click_offset' in locals() else '(0,0)'}")
+            
+            # Retry logic
+            max_retries = step.retry_count if hasattr(step, 'retry_count') and step.retry_count > 0 else 3
+            retry_delay = 1.0  # 1 second between retries
+            
+            # Performance monitoring
+            search_start_time = time.time()
+            
+            result = None
+            for attempt in range(max_retries):
+                # Find text on screen
+                exact_match = getattr(step, 'exact_match', False)
+                
+                try:
+                    # Find text using text extractor
+                    result = self._text_extractor.find_text(
+                        search_text,
+                        region=region,
+                        exact_match=exact_match,
+                        confidence_threshold=confidence
+                    )
+                    
+                    if result:
+                        break  # Found it, exit retry loop
+                        
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise  # Re-raise on last attempt
+                    self.logger.warning(f"텍스트 검색 시도 {attempt + 1}/{max_retries} 실패: {e}")
+                
+                # Wait before retry (except on last attempt)
+                if attempt < max_retries - 1 and not result:
+                    self.logger.info(f"텍스트를 찾지 못했습니다. {retry_delay}초 후 재시도합니다... (시도 {attempt + 1}/{max_retries})")
+                    time.sleep(retry_delay)
+            
+            # Performance monitoring - log if search took too long
+            search_elapsed = time.time() - search_start_time
+            if search_elapsed > 5.0:
+                self.logger.warning(f"텍스트 검색이 {search_elapsed:.2f}초 걸렸습니다. 검색 영역을 좁히는 것을 고려하세요.")
             
             if result:
                 if mask_in_logs:
@@ -427,22 +609,22 @@ class StepExecutor:
                     click_x = result.center[0] + click_offset[0]
                     click_y = result.center[1] + click_offset[1]
                     
-                    # Perform click
+                    # Perform click with human-like movement
+                    self._click_with_human_delay(click_x, click_y, double_click=double_click)
+                    
                     if double_click:
-                        pyautogui.doubleClick(click_x, click_y)
-                        self.logger.debug(f"Double clicked at: ({click_x}, {click_y})")
+                        self.logger.debug(f"Double clicked at: ({click_x}, {click_y}) with human-like movement")
                     else:
-                        pyautogui.click(click_x, click_y)
-                        self.logger.debug(f"Clicked at: ({click_x}, {click_y})")
+                        self.logger.debug(f"Clicked at: ({click_x}, {click_y}) with human-like movement")
                     
                 return result.center
             else:
-                # Handle not found case
+                # Handle not found case after all retries
                 if fail_if_not_found:
-                    error_msg = f"Text not found: {search_text if not mask_in_logs else '[MASKED]'}"
+                    error_msg = f"Text not found after {max_retries} attempts: {search_text if not mask_in_logs else '[MASKED]'}"
                     raise ValueError(error_msg)
                 else:
-                    self.logger.warning(f"Text not found: {search_text if not mask_in_logs else '[MASKED]'}")
+                    self.logger.warning(f"Text not found after {max_retries} attempts: {search_text if not mask_in_logs else '[MASKED]'}")
                     return None
                     
         except Exception as e:

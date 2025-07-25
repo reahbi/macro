@@ -1,0 +1,1 @@
+# This file has been removed - PP-OCRv4 is used directly without dynamic model selection

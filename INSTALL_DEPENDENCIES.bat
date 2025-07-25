@@ -12,27 +12,30 @@ echo.
 REM Change to project directory
 cd /d "%~dp0"
 
-REM Check Python
-echo Checking Python installation...
-python --version >nul 2>&1
+REM Check Python 3.11
+echo Checking Python 3.11 installation...
+py -3.11 --version >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo [ERROR] Python is not installed or not in PATH!
+    echo [ERROR] Python 3.11 is not installed!
     echo.
-    echo Please install Python from: https://python.org
-    echo Make sure to check "Add Python to PATH" during installation
+    echo PaddleOCR requires Python 3.8, 3.9, 3.10, or 3.11
+    echo Please install Python 3.11 from: https://www.python.org/downloads/
+    echo.
+    echo Current Python version:
+    python --version 2>nul
     echo.
     pause
     exit /b 1
 )
 
-python --version
-echo Python found!
+echo Found Python 3.11:
+py -3.11 --version
 echo.
 
 REM Check pip
 echo Checking pip...
-python -m pip --version >nul 2>&1
+py -3.11 -m pip --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] pip not found!
     pause
@@ -41,13 +44,13 @@ if errorlevel 1 (
 
 REM Upgrade pip
 echo Upgrading pip...
-python -m pip install --upgrade pip
+py -3.11 -m pip install --upgrade pip
 
 REM Check if requirements.txt exists
 if exist "requirements.txt" (
     echo.
     echo Installing from requirements.txt...
-    python -m pip install -r requirements.txt
+    py -3.11 -m pip install -r requirements.txt
     
     if errorlevel 1 (
         echo.
@@ -66,31 +69,27 @@ echo Installing core packages individually...
 echo.
 
 echo Installing GUI framework (PyQt5)...
-python -m pip install PyQt5>=5.15.0
+py -3.11 -m pip install PyQt5>=5.15.0
 
 echo Installing data processing libraries...
-python -m pip install pandas>=1.3.0 openpyxl>=3.0.0 numpy>=1.21.0
+py -3.11 -m pip install pandas>=1.3.0 openpyxl>=3.0.0 numpy>=1.21.0
 
 echo Installing automation libraries...
-python -m pip install pyautogui>=0.9.53 pillow>=8.3.0 opencv-python>=4.5.0
+py -3.11 -m pip install pyautogui>=0.9.53 pillow>=8.3.0 opencv-python>=4.5.0
 
 echo Installing screen capture...
-python -m pip install screeninfo>=0.8.0 mss>=6.1.0
+py -3.11 -m pip install screeninfo>=0.8.0 mss>=6.1.0
 
 echo Installing security...
-python -m pip install cryptography>=3.4.0
+py -3.11 -m pip install cryptography>=3.4.0
 
 echo.
-echo Installing OCR (This may take a while on first install)...
-python -m pip install easyocr>=1.7.0
-
-echo.
-echo Installing testing frameworks (optional)...
-python -m pip install pytest>=6.2.0 pytest-qt>=4.0.0
+echo Installing OCR - PaddleOCR (This may take a while on first install)...
+py -3.11 -m pip install paddlepaddle>=2.5.0 paddleocr>=2.7.0
 
 echo.
 echo Installing development tools (optional)...
-python -m pip install black>=21.0 flake8>=3.9.0
+py -3.11 -m pip install black>=21.0 flake8>=3.9.0
 
 :SUCCESS
 echo.
@@ -101,10 +100,11 @@ echo.
 
 REM Test import key packages
 echo Testing package imports...
-python -c "import PyQt5; print('✓ PyQt5 OK')" 2>nul
-python -c "import pandas; print('✓ pandas OK')" 2>nul  
-python -c "import pyautogui; print('✓ pyautogui OK')" 2>nul
-python -c "import cv2; print('✓ opencv OK')" 2>nul
+py -3.11 -c "import PyQt5; print('✓ PyQt5 OK')" 2>nul
+py -3.11 -c "import pandas; print('✓ pandas OK')" 2>nul  
+py -3.11 -c "import pyautogui; print('✓ pyautogui OK')" 2>nul
+py -3.11 -c "import cv2; print('✓ opencv OK')" 2>nul
+py -3.11 -c "import paddleocr; print('✓ PaddleOCR OK')" 2>nul
 
 echo.
 echo Ready to run Excel Macro Automation!

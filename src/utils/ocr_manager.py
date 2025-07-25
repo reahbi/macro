@@ -1,5 +1,5 @@
 """
-OCR Manager for handling EasyOCR installation and initialization
+OCR Manager for handling PaddleOCR installation and initialization
 """
 
 import os
@@ -18,7 +18,7 @@ class OCRStatus:
     FAILED = "failed"
 
 class OCRManager:
-    """EasyOCR 설치 및 관리"""
+    """PaddleOCR 설치 및 관리"""
     
     _instance = None
     _status = OCRStatus.NOT_INSTALLED
@@ -61,9 +61,9 @@ class OCRManager:
         if not self.is_installed():
             return False
         
+        # PaddleOCR 확인
         try:
-            # 실제로 import 가능한지 확인
-            import easyocr
+            import paddleocr
             return True
         except ImportError:
             return False
@@ -74,15 +74,18 @@ class OCRManager:
         self.ocr_path.mkdir(parents=True, exist_ok=True)
         
         with open(self.status_file, 'w') as f:
-            json.dump({'status': status}, f)
+            json.dump({
+                'status': status,
+                'ocr_type': 'paddleocr'
+            }, f)
     
     def get_text_extractor(self):
         """TextExtractor 인스턴스 반환"""
         if not self.is_available():
-            raise RuntimeError("OCR이 설치되지 않았습니다. 첫 실행 시 자동으로 설치됩니다.")
+            raise RuntimeError("PaddleOCR이 설치되지 않았습니다. 첫 실행 시 자동으로 설치됩니다.")
         
-        from vision.text_extractor import TextExtractor
-        return TextExtractor()
+        from vision.text_extractor_paddle import PaddleTextExtractor
+        return PaddleTextExtractor()
 
 
 class OCRInstallThread(QThread):

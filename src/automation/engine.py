@@ -114,13 +114,24 @@ class ExecutionEngine(QThread):
         self.macro = macro
         self.excel_manager = excel_manager
         
-        # Debug: print macro steps
+        # Debug: print macro steps with detailed information
         for i, step in enumerate(macro.steps):
             self.logger.debug(f"Step {i+1}: {step.step_type.value}, name='{step.name}'")
             if hasattr(step, 'search_text'):
-                self.logger.debug(f"  - search_text: '{step.search_text}'")
+                self.logger.debug(f"  - search_text: '{step.search_text}' (type: {type(step.search_text)}, len: {len(step.search_text) if step.search_text else 0})")
             if hasattr(step, 'excel_column'):
-                self.logger.debug(f"  - excel_column: '{step.excel_column}'")
+                self.logger.debug(f"  - excel_column: '{step.excel_column}' (type: {type(step.excel_column)}, is None: {step.excel_column is None})")
+            
+            # Special debugging for TextSearchStep
+            if hasattr(step, 'step_type') and step.step_type.value == 'ocr_text':
+                self.logger.debug(f"  - TextSearchStep detailed info:")
+                self.logger.debug(f"    - has search_text: {hasattr(step, 'search_text')}, value: '{getattr(step, 'search_text', 'N/A')}'")
+                self.logger.debug(f"    - has excel_column: {hasattr(step, 'excel_column')}, value: '{getattr(step, 'excel_column', 'N/A')}'")
+                # Pre-validate this step
+                if hasattr(step, 'validate'):
+                    step_errors = step.validate()
+                    if step_errors:
+                        self.logger.debug(f"    - Validation errors: {step_errors}")
         
         # Validate macro
         errors = macro.validate()

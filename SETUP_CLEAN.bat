@@ -75,8 +75,8 @@ echo [6/7] Installing OpenCV...
 pip install opencv-python==4.12.0.88
 
 echo.
-echo [7/7] Installing EasyOCR (optional, may take time)...
-pip install easyocr || echo [Info] EasyOCR installation skipped
+echo [7/7] Installing PaddleOCR (optional, may take time)...
+pip install paddlepaddle>=2.5.0 paddleocr>=2.7.0 || echo [Info] PaddleOCR installation skipped
 
 echo.
 echo ========================================

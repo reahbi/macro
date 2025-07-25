@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0.0",
+  "macro": {
+    "macro_id": "67de058d-a52b-461e-a443-5b8752d16cf1",
+    "name": "새 매크로",
+    "description": "",
+    "version": "1.0.0",
+    "created_at": "2025-07-24T15:08:42.233308",
+    "updated_at": "2025-07-24T15:09:16.806302",
+    "steps": [
+      {
+        "step_id": "ff94f418-bfe7-42be-9c27-ceeb8727df54",
+        "step_type": "excel_row_start",
+        "name": "Excel 행 반복 시작",
+        "description": "",
+        "enabled": true,
+        "error_handling": "stop",
+        "retry_count": 0,
+        "repeat_mode": "incomplete_only",
+        "repeat_count": 0,
+        "start_row": 0,
+        "end_row": 0,
+        "pair_id": "753ed75f-d039-4e11-85eb-e8e665a29add"
+      },
+      {
+        "step_id": "a500ba19-0932-4186-9813-616ba7762e65",
+        "step_type": "ocr_text",
+        "name": "텍스트 검색",
+        "description": "",
+        "enabled": true,
+        "error_handling": "stop",
+        "retry_count": 0,
+        "type": "ocr_text",
+        "search_text": "",
+        "excel_column": null,
+        "region": null,
+        "exact_match": false,
+        "confidence": 0.5,
+        "click_on_found": true,
+        "click_offset": [
+          0,
+          0
+        ],
+        "double_click": false,
+        "normalize_text": false
+      },
+      {
+        "step_id": "158db846-b079-4154-b81a-0000b4f8ae16",
+        "step_type": "keyboard_type",
+        "name": "텍스트 입력",
+        "description": "",
+        "enabled": true,
+        "error_handling": "stop",
+        "retry_count": 0,
+        "text": "${작업번호}",
+        "interval": 0.0,
+        "use_variables": true
+      },
+      {
+        "step_id": "63743c66-b4df-41df-acdd-127986c603b0",
+        "step_type": "excel_row_end",
+        "name": "Excel 행 반복 끝",
+        "description": "",
+        "enabled": true,
+        "error_handling": "stop",
+        "retry_count": 0,
+        "pair_id": "753ed75f-d039-4e11-85eb-e8e665a29add",
+        "mark_as_complete": true,
+        "completion_status": "완료"
+      }
+    ],
+    "variables": {},
+    "metadata": {}
+  }
+}

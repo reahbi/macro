@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0.0",
+  "macro": {
+    "macro_id": "5890cb24-562b-4b4a-a509-46f284831d53",
+    "name": "새 매크로",
+    "description": "",
+    "version": "1.0.0",
+    "created_at": "2025-07-24T15:44:55.083941",
+    "updated_at": "2025-07-24T15:44:59.982873",
+    "steps": [
+      {
+        "step_id": "6355251c-a22a-4c81-ae08-f5f308e80e77",
+        "step_type": "ocr_text",
+        "name": "텍스트 검색",
+        "description": "",
+        "enabled": true,
+        "error_handling": "stop",
+        "retry_count": 0,
+        "type": "ocr_text",
+        "search_text": "${환자명}",
+        "excel_column": "환자명",
+        "region": [
+          0,
+          0,
+          1920,
+          1080
+        ],
+        "exact_match": false,
+        "confidence": 0.5,
+        "click_on_found": true,
+        "click_offset": [
+          0,
+          0
+        ],
+        "double_click": false,
+        "normalize_text": false
+      }
+    ],
+    "variables": {},
+    "metadata": {}
+  }
+}

@@ -5,7 +5,7 @@ Main application window
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QMenuBar, QMenu, QAction, QStatusBar, QLabel,
-    QMessageBox, QTabWidget, QFileDialog
+    QMessageBox, QTabWidget, QFileDialog, QDialog
 )
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon, QCloseEvent
@@ -152,6 +152,7 @@ class MainWindow(QMainWindow):
         
         settings_action = QAction("Settings", self)
         settings_action.setShortcut("Ctrl+,")
+        settings_action.triggered.connect(self.show_settings_dialog)
         edit_menu.addAction(settings_action)
         
         # View menu
@@ -216,6 +217,34 @@ class MainWindow(QMainWindow):
         from ui.dialogs.log_viewer_dialog import LogViewerDialog
         dialog = LogViewerDialog(parent=self)
         dialog.show()  # Non-modal
+        
+    def show_settings_dialog(self):
+        """Show settings dialog"""
+        from ui.dialogs.settings_dialog import SettingsDialog
+        dialog = SettingsDialog(self.settings, parent=self)
+        
+        # Connect settings changed signal
+        dialog.settingsChanged.connect(self._on_settings_changed)
+        
+        # Show dialog
+        if dialog.exec_() == QDialog.Accepted:
+            self.logger.info("Settings updated")
+            
+    def _on_settings_changed(self):
+        """Handle settings change"""
+        # Apply compact mode if changed
+        compact_mode = self.settings.get("ui.compact_mode", False)
+        if self.compact_mode_action.isChecked() != compact_mode:
+            self.compact_mode_action.setChecked(compact_mode)
+            self.apply_compact_mode(compact_mode)
+            
+        # Apply theme if changed
+        theme = self.settings.get("theme", "light")
+        # TODO: Implement theme switching
+        
+        # Notify execution widget of settings change
+        if hasattr(self, 'execution_widget'):
+            self.execution_widget.reload_settings()
     
     def reinstall_ocr(self):
         """Reinstall OCR components"""

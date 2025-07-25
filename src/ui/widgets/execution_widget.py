@@ -342,6 +342,13 @@ class ExecutionWidget(QWidget):
         self.engine.executionFinished.connect(self._on_execution_finished)
         self.engine.error.connect(self._on_error)
         
+    def reload_settings(self):
+        """Reload settings from configuration"""
+        # Recreate engine with new settings
+        self.engine = ExecutionEngine(self.settings)
+        self.connect_signals()  # Reconnect signals
+        self.logger.info("Execution settings reloaded")
+        
     def set_macro_and_excel(self, macro: Macro, excel_manager: Optional[ExcelManager] = None):
         """Set macro and Excel manager"""
         self.current_macro = macro

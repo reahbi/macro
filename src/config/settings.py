@@ -23,7 +23,14 @@ class Settings:
         "execution": {
             "default_delay_ms": 100,
             "screenshot_quality": 95,
-            "ocr_confidence_threshold": 0.7
+            "ocr_confidence_threshold": 0.7,
+            "human_like_movement": {
+                "enabled": True,
+                "min_move_duration": 0.3,
+                "max_move_duration": 1.5,
+                "click_delay_min": 0.1,
+                "click_delay_max": 0.3
+            }
         },
         "ui": {
             "window_size": [1280, 720],

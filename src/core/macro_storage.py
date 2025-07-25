@@ -65,6 +65,11 @@ class MacroStorage:
             "macro": macro.to_dict()
         }
         
+        # Debug: Check TextSearchStep values before saving
+        for step in macro.steps:
+            if hasattr(step, 'step_type') and step.step_type.value == 'ocr_text':
+                self.logger.debug(f"Saving TextSearchStep {step.step_id} - excel_column: '{getattr(step, 'excel_column', 'N/A')}'")
+        
         # Convert to JSON
         json_str = json.dumps(data, indent=2, ensure_ascii=False)
         

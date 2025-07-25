@@ -11,7 +11,7 @@ This application allows users to automate repetitive tasks by reading task lists
 - Excel file integration with sheet/column mapping
 - Drag & drop macro editor
 - Mouse and keyboard automation
-- Image search and OCR capabilities
+- Image search and OCR capabilities (PaddleOCR for Korean text)
 - Conditional logic and loops
 - Execution logging
 - Multi-language support (Korean/English)
@@ -19,7 +19,7 @@ This application allows users to automate repetitive tasks by reading task lists
 ## Requirements
 
 - Windows 10/11 64-bit
-- Python 3.8+
+- Python 3.8 ~ 3.11 (Python 3.13 not supported)
 - 1280x720 minimum screen resolution
 
 ## Installation

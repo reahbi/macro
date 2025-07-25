@@ -131,7 +131,8 @@ class SelfDiagnosis:
         }
         
         optional_packages = {
-            'easyocr': 'easyocr',
+            'paddleocr': 'paddleocr',
+            'paddlepaddle': 'paddle',
             'pynput': 'pynput',
             'scipy': 'scipy',
             'scikit-learn': 'sklearn'

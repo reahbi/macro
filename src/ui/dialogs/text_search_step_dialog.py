@@ -13,7 +13,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor
 from core.macro_types import TextSearchStep
 from ui.widgets.roi_selector import ROISelectorOverlay
-from vision.text_extractor import TextExtractor
+from vision.text_extractor_paddle import PaddleTextExtractor as TextExtractor
 from utils.monitor_utils import get_monitor_info
 import pyautogui
 import mss

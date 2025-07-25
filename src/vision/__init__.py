@@ -14,9 +14,9 @@ except ImportError as e:
     MatchResult = None
 
 try:
-    from vision.text_extractor import TextExtractor, TextResult
+    from vision.text_extractor_paddle import PaddleTextExtractor as TextExtractor, TextResult
 except ImportError as e:
-    logger.warning(f"TextExtractor not available: {e}")
+    logger.warning(f"PaddleTextExtractor not available: {e}")
     TextExtractor = None
     TextResult = None
 

@@ -359,17 +359,66 @@ class TextSearchStep(MacroStep):
     click_on_found: bool = True
     click_offset: Tuple[int, int] = (0, 0)  # Offset from center of found text
     double_click: bool = False  # Whether to double click
+    normalize_text: bool = False  # Whether to normalize special characters (e.g., full-width to half-width)
     
     def validate(self) -> List[str]:
         errors = []
-        if not self.search_text and not self.excel_column:
-            errors.append("Either search text or Excel column must be specified")
+        # Check if either search_text or excel_column has a valid value
+        has_valid_search_text = bool(self.search_text and self.search_text.strip())
+        
+        # Also check if search_text contains a variable reference (like ${column_name})
+        import re
+        has_variable_in_search_text = bool(self.search_text and re.match(r'^\$\{[^}]+\}', self.search_text))
+        
+        has_valid_excel_column = bool(self.excel_column and self.excel_column.strip() 
+                                     and self.excel_column != "(엑셀 파일을 먼저 로드하세요)"
+                                     and not self.excel_column.endswith("(열을 찾을 수 없음)"))
+        
+        # Debug information
+        if not has_valid_search_text:
+            if self.search_text is None:
+                search_text_info = "search_text is None"
+            elif self.search_text == "":
+                search_text_info = "search_text is empty string"
+            elif not self.search_text.strip():
+                search_text_info = f"search_text contains only whitespace: '{self.search_text}'"
+            else:
+                search_text_info = f"search_text is invalid: '{self.search_text}'"
+        else:
+            search_text_info = f"search_text is valid: '{self.search_text}'"
+            
+        if not has_valid_excel_column:
+            if self.excel_column is None:
+                excel_column_info = "excel_column is None"
+            elif self.excel_column == "":
+                excel_column_info = "excel_column is empty string"
+            elif not self.excel_column.strip():
+                excel_column_info = f"excel_column contains only whitespace: '{self.excel_column}'"
+            elif self.excel_column == "(엑셀 파일을 먼저 로드하세요)":
+                excel_column_info = "excel_column contains placeholder text"
+            elif self.excel_column.endswith("(열을 찾을 수 없음)"):
+                excel_column_info = f"excel_column not found in current Excel file: '{self.excel_column}'"
+            else:
+                excel_column_info = f"excel_column is invalid: '{self.excel_column}'"
+        else:
+            excel_column_info = f"excel_column is valid: '{self.excel_column}'"
+        
+        # Accept if there's valid search text (including variable format) OR valid excel column
+        if not (has_valid_search_text or has_variable_in_search_text) and not has_valid_excel_column:
+            if self.excel_column and self.excel_column.endswith("(열을 찾을 수 없음)"):
+                errors.append(f"지정된 엑셀 열 '{self.excel_column.replace(' (열을 찾을 수 없음)', '')}'을(를) 현재 엑셀 파일에서 찾을 수 없습니다. "
+                             "엑셀 파일을 다시 로드하거나 올바른 열을 선택하세요.")
+            else:
+                errors.append(f"검색 텍스트 또는 엑셀 열을 지정해야 합니다. "
+                             f"[디버그: {search_text_info}, {excel_column_info}] "
+                             "텍스트 검색 설정에서 '고정 텍스트' 또는 '엑셀 열 데이터'를 선택하고 값을 입력하세요.")
         if not 0 <= self.confidence <= 1:
-            errors.append("Confidence must be between 0 and 1")
+            errors.append("신뢰도는 0과 1 사이의 값이어야 합니다")
         return errors
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
+        data['type'] = self.step_type.value  # Ensure 'type' key is present
         data.update({
             "search_text": self.search_text,
             "excel_column": self.excel_column,
@@ -378,14 +427,32 @@ class TextSearchStep(MacroStep):
             "confidence": self.confidence,
             "click_on_found": self.click_on_found,
             "click_offset": list(self.click_offset),
-            "double_click": self.double_click
+            "double_click": self.double_click,
+            "normalize_text": self.normalize_text
         })
+        # Debug logging for save
+        if self.excel_column:
+            import sys
+            print(f"DEBUG [TextSearchStep.to_dict]: Saving with excel_column='{self.excel_column}'", file=sys.stderr)
+        if self.region:
+            import sys
+            print(f"DEBUG [TextSearchStep.to_dict]: Saving with region={self.region}", file=sys.stderr)
+        else:
+            import sys
+            print(f"DEBUG [TextSearchStep.to_dict]: No region to save (region is None or empty)", file=sys.stderr)
         return data
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TextSearchStep':
         region = data.get("region")
         click_offset = data.get("click_offset", [0, 0])
+        excel_column = data.get("excel_column")
+        
+        # Debug logging for load
+        if excel_column:
+            import sys
+            print(f"DEBUG [TextSearchStep.from_dict]: Loading with excel_column='{excel_column}'", file=sys.stderr)
+        
         return cls(
             step_id=data.get("step_id", str(uuid.uuid4())),
             name=data.get("name", ""),
@@ -394,13 +461,14 @@ class TextSearchStep(MacroStep):
             error_handling=ErrorHandling(data.get("error_handling", "stop")),
             retry_count=data.get("retry_count", 0),
             search_text=data.get("search_text", ""),
-            excel_column=data.get("excel_column"),
+            excel_column=excel_column,
             region=tuple(region) if region else None,
             exact_match=data.get("exact_match", False),
             confidence=data.get("confidence", 0.5),
             click_on_found=data.get("click_on_found", data.get("click_after_find", True)),
             click_offset=tuple(click_offset),
-            double_click=data.get("double_click", False)
+            double_click=data.get("double_click", False),
+            normalize_text=data.get("normalize_text", False)
         )
 
 # Flow Control Steps

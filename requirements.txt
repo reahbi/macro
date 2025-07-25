@@ -19,7 +19,9 @@ screeninfo>=0.8.0
 mss>=6.1.0
 
 # OCR (Optical Character Recognition)
-easyocr>=1.7.0
+paddlepaddle>=2.5.0  # PaddlePaddle framework (CPU version)
+# paddlepaddle-gpu>=2.5.0  # Uncomment for GPU version
+paddleocr>=2.7.0  # PaddleOCR
 
 # Security
 cryptography>=3.4.0

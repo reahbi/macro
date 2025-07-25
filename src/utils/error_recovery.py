@@ -203,7 +203,8 @@ class AutoErrorRecovery:
                     'cv2': 'opencv-python',
                     'PIL': 'Pillow',
                     'sklearn': 'scikit-learn',
-                    'easyocr': 'easyocr',
+                    'paddleocr': 'paddleocr',
+                    'paddle': 'paddlepaddle',
                     'pynput': 'pynput',
                     'mss': 'mss',
                     'chardet': 'chardet'
