@@ -332,9 +332,9 @@ class PaddleTextExtractor:
                                                 width = max_x - min_x
                                                 height = max_y - min_y
                                                 
-                                                # 중심점 계산
-                                                center_x = min_x + width // 2
-                                                center_y = min_y + height // 2
+                                                # 중심점 계산 (반올림으로 더 정확한 중심점)
+                                                center_x = int(min_x + width / 2)
+                                                center_y = int(min_y + height / 2)
                                                 
                                                 # 영역이 지정된 경우 좌표 조정
                                                 if region:
@@ -437,9 +437,9 @@ class PaddleTextExtractor:
                         width = max_x - min_x
                         height = max_y - min_y
                         
-                        # 중심점 계산
-                        center_x = min_x + width // 2
-                        center_y = min_y + height // 2
+                        # 중심점 계산 (반올림으로 더 정확한 중심점)
+                        center_x = int(min_x + width / 2)
+                        center_y = int(min_y + height / 2)
                         
                         # 영역이 지정된 경우 좌표 조정
                         if region:

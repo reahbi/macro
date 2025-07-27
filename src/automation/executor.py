@@ -126,6 +126,151 @@ class StepExecutor:
         
         return result
         
+    def _prepare_search_text(self, step: MacroStep) -> str:
+        """
+        텍스트 검색에 사용할 최종 텍스트를 준비합니다.
+        변수 치환, 텍스트 정규화, 유효성 검사를 수행합니다.
+        
+        Args:
+            step: 텍스트 검색 단계 객체
+            
+        Returns:
+            str: OCR 검색에 사용할 최종 텍스트
+            
+        Raises:
+            ValueError: 필요한 텍스트나 변수를 찾을 수 없을 때
+        """
+        # 1. 검색할 텍스트의 원본 소스를 가져옵니다
+        search_text = getattr(step, 'search_text', '')
+        
+        # 2. ${변수명} 형식의 변수 참조 처리
+        if search_text:
+            # 변수 패턴 체크
+            import re
+            variable_pattern = r'^\$\{([^}]+)\}$'
+            variable_match = re.match(variable_pattern, search_text)
+            
+            if variable_match:
+                # 변수 형식인 경우
+                column_name = variable_match.group(1)
+                self.logger.debug(f"Found variable reference for column: '{column_name}'")
+                
+                if not self.variables:
+                    raise ValueError(f"엑셀 열 '{column_name}'을(를) 사용하려고 했지만, 현재 엑셀 데이터가 없습니다. "
+                                   f"이 단계가 Excel 반복 블록 안에 있는지 확인하세요.")
+                elif column_name in self.variables:
+                    search_text = str(self.variables[column_name])
+                    self.logger.debug(f"Replaced with Excel data from column '{column_name}': {search_text}")
+                else:
+                    available_cols = list(self.variables.keys())
+                    raise ValueError(f"엑셀 열 '{column_name}'을(를) 현재 행 데이터에서 찾을 수 없습니다. "
+                                   f"사용 가능한 열: {available_cols}")
+        
+        # 3. 레거시 호환성: search_text가 비어있고 excel_column이 있는 경우
+        if not search_text:
+            excel_column = getattr(step, 'excel_column', None)
+            if excel_column:
+                self.logger.debug(f"Legacy: Excel column specified: '{excel_column}'")
+                if not self.variables:
+                    raise ValueError(f"엑셀 열 '{excel_column}'을(를) 사용하려고 했지만, 현재 엑셀 데이터가 없습니다.")
+                elif excel_column in self.variables:
+                    search_text = str(self.variables[excel_column])
+                    self.logger.debug(f"Legacy: Using Excel data from column '{excel_column}': {search_text}")
+                else:
+                    available_cols = list(self.variables.keys())
+                    raise ValueError(f"엑셀 열 '{excel_column}'을(를) 찾을 수 없습니다. "
+                                   f"사용 가능한 열: {available_cols}")
+        
+        # 4. 검색 텍스트가 여전히 비어있는지 확인
+        if not search_text:
+            raise ValueError("검색할 텍스트가 지정되지 않았습니다.")
+        
+        # 5. 변수 치환 (일반 텍스트 내의 ${변수} 패턴)
+        search_text = self._substitute_variables(search_text)
+        
+        # 6. 텍스트 정규화 (전각->반각 변환 등)
+        if getattr(step, 'normalize_text', False):
+            # 전각 문자를 반각으로 변환
+            replacements = {
+                '：': ':', '；': ';', '（': '(', '）': ')',
+                '［': '[', '］': ']', '｛': '{', '｝': '}',
+                '＜': '<', '＞': '>', '，': ',', '。': '.',
+                '！': '!', '？': '?', '　': ' '
+            }
+            for full_width, half_width in replacements.items():
+                search_text = search_text.replace(full_width, half_width)
+            self.logger.debug(f"Normalized text: {search_text}")
+        
+        # 7. 양쪽 공백 제거 후 반환
+        return search_text.strip()
+        
+    def _log_search_debug_info(self, search_text: str, exact_match: bool, confidence: float,
+                               region: Optional[Tuple[int, int, int, int]], 
+                               click_on_found: bool, click_offset: Tuple[int, int]) -> None:
+        """텍스트 검색 디버그 정보 로깅"""
+        debug_mode = getattr(self.settings, 'debug_mode', False) if hasattr(self, 'settings') else False
+        
+        if debug_mode:
+            self.logger.debug(f"텍스트 검색 시작: '{search_text}'")
+            self.logger.debug(f"옵션: exact_match={exact_match}, confidence={confidence}")
+            self.logger.debug(f"영역: {region if region else '전체 화면'}")
+            self.logger.debug(f"클릭 옵션: click_on_found={click_on_found}, offset={click_offset}")
+    
+    def _search_text_with_retry(self, search_text: str, region: Optional[Tuple[int, int, int, int]],
+                                exact_match: bool, confidence: float, step: MacroStep) -> Optional[Any]:
+        """재시도 로직을 포함한 텍스트 검색"""
+        max_retries = step.retry_count if hasattr(step, 'retry_count') and step.retry_count > 0 else 3
+        retry_delay = 1.0
+        
+        # 성능 모니터링
+        search_start_time = time.time()
+        
+        result = None
+        for attempt in range(max_retries):
+            try:
+                # 텍스트 검색 수행
+                result = self._text_extractor.find_text(
+                    search_text,
+                    region=region,
+                    exact_match=exact_match,
+                    confidence_threshold=confidence
+                )
+                
+                if result:
+                    break  # 찾았으면 루프 종료
+                    
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise  # 마지막 시도에서는 예외 재발생
+                self.logger.warning(f"텍스트 검색 시도 {attempt + 1}/{max_retries} 실패: {e}")
+            
+            # 재시도 전 대기 (마지막 시도가 아닌 경우)
+            if attempt < max_retries - 1 and not result:
+                self.logger.info(f"텍스트를 찾지 못했습니다. {retry_delay}초 후 재시도합니다... (시도 {attempt + 1}/{max_retries})")
+                time.sleep(retry_delay)
+        
+        # 성능 경고
+        search_elapsed = time.time() - search_start_time
+        if search_elapsed > 5.0:
+            self.logger.warning(f"텍스트 검색이 {search_elapsed:.2f}초 걸렸습니다. 검색 영역을 좁히는 것을 고려하세요.")
+            
+        return result
+    
+    def _perform_text_click(self, result: Any, click_offset: Tuple[int, int], double_click: bool) -> None:
+        """텍스트 검색 결과에 대한 클릭 수행"""
+        click_x = result.center[0] + click_offset[0]
+        click_y = result.center[1] + click_offset[1]
+        
+        # 사람처럼 자연스러운 마우스 이동 및 클릭
+        self._click_with_human_delay(click_x, click_y, double_click=double_click)
+        
+        if double_click:
+            self.logger.debug(f"Double clicked at: ({click_x}, {click_y}) with human-like movement")
+            # IME 안정화 및 편집 모드 활성화 대기
+            time.sleep(0.3)
+        else:
+            self.logger.debug(f"Clicked at: ({click_x}, {click_y}) with human-like movement")
+        
     def _get_absolute_position(self, x: int, y: int, relative_to: str) -> Tuple[int, int]:
         """Convert coordinates to absolute screen position"""
         if relative_to == "screen":
@@ -275,6 +420,9 @@ class StepExecutor:
     
     def _execute_keyboard_type(self, step) -> None:
         """Execute keyboard typing"""
+        # 입력 전 IME 준비 대기
+        time.sleep(0.1)
+        
         text = step.text
         self.logger.info(f"Keyboard type step - Original text: {text}")
         self.logger.info(f"Use variables: {step.use_variables}")
@@ -446,213 +594,41 @@ class StepExecutor:
                     self.logger.error("OCR이 설치되었지만 초기화에 실패했습니다.")
                     raise RuntimeError("OCR 초기화 실패. 프로그램을 재시작해주세요.")
             
-            # Initialize default values
-            search_text = ""
-            region = None
-            confidence = 0.7
-            click_on_found = True
-            fail_if_not_found = True
-            mask_in_logs = False
-            click_offset = (0, 0)
-            double_click = False
+            # 1. 새로운 헬퍼 메서드를 사용하여 검색할 텍스트 준비
+            search_text = self._prepare_search_text(step)
             
-            # Handle different step types
-            step_class_name = step.__class__.__name__
+            # 2. 검색 옵션 가져오기
+            region = getattr(step, 'region', None)
+            if region and isinstance(region, list):
+                region = tuple(region)
+            confidence = getattr(step, 'confidence', 0.5)
+            exact_match = getattr(step, 'exact_match', False)
+            click_on_found = getattr(step, 'click_on_found', True)
+            click_offset = getattr(step, 'click_offset', (0, 0))
+            double_click = getattr(step, 'double_click', False)
             
-            if step_class_name == "DynamicTextSearchStep":
-                # DynamicTextSearchStep attributes
-                search_text = getattr(step, 'search_text', '')
-                region = getattr(step, 'search_region', None)
-                confidence = getattr(step, 'confidence_threshold', 0.7)
-                click_on_found = getattr(step, 'click_on_found', True)
-                fail_if_not_found = getattr(step, 'fail_if_not_found', True)
-                mask_in_logs = getattr(step, 'mask_in_logs', False)
-                click_offset = getattr(step, 'click_offset', (0, 0))
-                double_click = getattr(step, 'double_click', False)
-            elif step_class_name == "TextSearchStep":
-                # TextSearchStep attributes - this is the one with excel_column
-                search_text = getattr(step, 'search_text', '')
-                region = getattr(step, 'region', None)
-                # Normalize region data (convert list to tuple if needed)
-                if region and isinstance(region, list):
-                    region = tuple(region)
-                confidence = getattr(step, 'confidence', 0.5)
-                click_on_found = getattr(step, 'click_on_found', True)
-                click_offset = getattr(step, 'click_offset', (0, 0))
-                double_click = getattr(step, 'double_click', False)
-                fail_if_not_found = True  # TextSearchStep doesn't have this attribute
-                mask_in_logs = False  # TextSearchStep doesn't have this attribute
-                
-                # Debug: Log original search_text value
-                self.logger.debug(f"TextSearchStep - original search_text: '{search_text}'")
-                
-                # Check if search_text contains variable reference like ${column_name}
-                import re
-                variable_pattern = r'^\$\{([^}]+)\}$'
-                variable_match = re.match(variable_pattern, search_text)
-                
-                if variable_match:
-                    # Extract column name from variable format
-                    column_name = variable_match.group(1)
-                    self.logger.debug(f"Found variable reference for column: '{column_name}'")
-                    
-                    if not self.variables:
-                        raise ValueError(f"엑셀 열 '{column_name}'을(를) 사용하려고 했지만, 현재 엑셀 데이터가 없습니다. "
-                                       f"이 단계가 Excel 반복 블록 안에 있는지 확인하세요.")
-                    elif column_name in self.variables:
-                        search_text = str(self.variables[column_name])
-                        self.logger.debug(f"Replaced with Excel data from column '{column_name}': {search_text}")
-                    else:
-                        available_cols = list(self.variables.keys())
-                        raise ValueError(f"엑셀 열 '{column_name}'을(를) 현재 행 데이터에서 찾을 수 없습니다. "
-                                       f"사용 가능한 열: {available_cols}")
-                
-                # Legacy support: Handle excel_column attribute if search_text is empty
-                elif not search_text:
-                    excel_column = getattr(step, 'excel_column', None)
-                    if excel_column:
-                        self.logger.debug(f"Legacy: Excel column specified: '{excel_column}'")
-                        if not self.variables:
-                            raise ValueError(f"엑셀 열 '{excel_column}'을(를) 사용하려고 했지만, 현재 엑셀 데이터가 없습니다.")
-                        elif excel_column in self.variables:
-                            search_text = str(self.variables[excel_column])
-                            self.logger.debug(f"Legacy: Using Excel data from column '{excel_column}': {search_text}")
-                        else:
-                            available_cols = list(self.variables.keys())
-                            raise ValueError(f"엑셀 열 '{excel_column}'을(를) 찾을 수 없습니다. "
-                                           f"사용 가능한 열: {available_cols}")
-            else:
-                # Legacy or unknown step type
-                search_text = getattr(step, 'text', getattr(step, 'search_text', ''))
-                region = getattr(step, 'region', None)
-                confidence = getattr(step, 'confidence', 0.7)
-                click_on_found = getattr(step, 'click_on_found', True)
-                fail_if_not_found = False
-                mask_in_logs = False
-                
-            if not search_text:
-                # Provide more helpful error message
-                if hasattr(step, 'excel_column') and step.excel_column:
-                    excel_column = step.excel_column
-                    if excel_column not in self.variables:
-                        available_cols = list(self.variables.keys()) if self.variables else []
-                        raise ValueError(f"Excel column '{excel_column}' not found in row data. Available columns: {available_cols}")
-                    else:
-                        raise ValueError(f"Excel column '{excel_column}' has empty value")
-                else:
-                    raise ValueError("No search text specified")
-                
-            # Replace variables in search text
-            search_text = self._substitute_variables(search_text)
-            
-            # Text preprocessing for special characters
-            normalize_text = getattr(step, 'normalize_text', False)
-            if normalize_text:
-                # Full-width to half-width conversion
-                search_text = search_text.replace('：', ':')  # Full-width colon
-                search_text = search_text.replace('；', ';')  # Full-width semicolon
-                search_text = search_text.replace('（', '(')  # Full-width left parenthesis
-                search_text = search_text.replace('）', ')')  # Full-width right parenthesis
-                search_text = search_text.replace('［', '[')  # Full-width left bracket
-                search_text = search_text.replace('］', ']')  # Full-width right bracket
-                search_text = search_text.replace('｛', '{')  # Full-width left brace
-                search_text = search_text.replace('｝', '}')  # Full-width right brace
-                search_text = search_text.replace('＜', '<')  # Full-width less than
-                search_text = search_text.replace('＞', '>')  # Full-width greater than
-                search_text = search_text.replace('，', ',')  # Full-width comma
-                search_text = search_text.replace('。', '.')  # Full-width period
-                search_text = search_text.replace('！', '!')  # Full-width exclamation
-                search_text = search_text.replace('？', '?')  # Full-width question mark
-                search_text = search_text.replace('　', ' ')  # Full-width space
-                self.logger.debug(f"Normalized text: {search_text}")
-            
-            # Trim whitespace
-            search_text = search_text.strip()
-            
-            # Log search (mask if sensitive)
-            if mask_in_logs:
-                self.logger.info("Searching for text: [MASKED]")
-            else:
-                self.logger.info(f"Searching for text: {search_text}")
+            # 3. 로깅
+            self.logger.info(f"Searching for text: {search_text}")
             
             # Debug logging
-            debug_mode = False
-            if hasattr(self, 'settings') and hasattr(self.settings, 'debug_mode'):
-                debug_mode = self.settings.debug_mode
+            self._log_search_debug_info(search_text, exact_match, confidence, region, click_on_found, click_offset)
             
-            if debug_mode:
-                self.logger.debug(f"텍스트 검색 시작: '{search_text}'")
-                self.logger.debug(f"옵션: exact_match={getattr(step, 'exact_match', False)}, confidence={confidence}")
-                self.logger.debug(f"영역: {region if region else '전체 화면'}")
-                self.logger.debug(f"클릭 옵션: click_on_found={click_on_found}, offset={click_offset if 'click_offset' in locals() else '(0,0)'}")
+            # Perform text search with retry logic
+            result = self._search_text_with_retry(search_text, region, exact_match, confidence, step)
             
-            # Retry logic
-            max_retries = step.retry_count if hasattr(step, 'retry_count') and step.retry_count > 0 else 3
-            retry_delay = 1.0  # 1 second between retries
-            
-            # Performance monitoring
-            search_start_time = time.time()
-            
-            result = None
-            for attempt in range(max_retries):
-                # Find text on screen
-                exact_match = getattr(step, 'exact_match', False)
-                
-                try:
-                    # Find text using text extractor
-                    result = self._text_extractor.find_text(
-                        search_text,
-                        region=region,
-                        exact_match=exact_match,
-                        confidence_threshold=confidence
-                    )
-                    
-                    if result:
-                        break  # Found it, exit retry loop
-                        
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise  # Re-raise on last attempt
-                    self.logger.warning(f"텍스트 검색 시도 {attempt + 1}/{max_retries} 실패: {e}")
-                
-                # Wait before retry (except on last attempt)
-                if attempt < max_retries - 1 and not result:
-                    self.logger.info(f"텍스트를 찾지 못했습니다. {retry_delay}초 후 재시도합니다... (시도 {attempt + 1}/{max_retries})")
-                    time.sleep(retry_delay)
-            
-            # Performance monitoring - log if search took too long
-            search_elapsed = time.time() - search_start_time
-            if search_elapsed > 5.0:
-                self.logger.warning(f"텍스트 검색이 {search_elapsed:.2f}초 걸렸습니다. 검색 영역을 좁히는 것을 고려하세요.")
-            
+            # Handle search result
             if result:
-                if mask_in_logs:
-                    self.logger.info("Text found at: [MASKED LOCATION]")
-                else:
-                    self.logger.info(f"Text found at: {result.center}")
+                self.logger.info(f"Text found at: {result.center}")
                 
                 # Click if requested
                 if click_on_found:
-                    click_x = result.center[0] + click_offset[0]
-                    click_y = result.center[1] + click_offset[1]
-                    
-                    # Perform click with human-like movement
-                    self._click_with_human_delay(click_x, click_y, double_click=double_click)
-                    
-                    if double_click:
-                        self.logger.debug(f"Double clicked at: ({click_x}, {click_y}) with human-like movement")
-                    else:
-                        self.logger.debug(f"Clicked at: ({click_x}, {click_y}) with human-like movement")
+                    self._perform_text_click(result, click_offset, double_click)
                     
                 return result.center
             else:
-                # Handle not found case after all retries
-                if fail_if_not_found:
-                    error_msg = f"Text not found after {max_retries} attempts: {search_text if not mask_in_logs else '[MASKED]'}"
-                    raise ValueError(error_msg)
-                else:
-                    self.logger.warning(f"Text not found after {max_retries} attempts: {search_text if not mask_in_logs else '[MASKED]'}")
-                    return None
+                # Text not found after all retries
+                self.logger.warning(f"Text not found: {search_text}")
+                return None
                     
         except Exception as e:
             self.logger.error(f"Text search execution failed: {e}")
