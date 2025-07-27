@@ -6,7 +6,7 @@
     "description": "",
     "version": "1.0.0",
     "created_at": "2025-07-25T15:41:45.472261",
-    "updated_at": "2025-07-25T15:45:02.640520",
+    "updated_at": "2025-07-27T19:57:25.062123",
     "steps": [
       {
         "step_id": "b8a2a64d-26d1-4932-a6d7-8b6afed58ede",
@@ -32,12 +32,12 @@
         "retry_count": 0,
         "type": "ocr_text",
         "search_text": "${환자명}",
-        "excel_column": "환자명",
+        "excel_column": null,
         "region": [
-          0,
-          116,
-          599,
-          350
+          13,
+          136,
+          112,
+          128
         ],
         "exact_match": false,
         "confidence": 0.4,
@@ -47,7 +47,8 @@
           0
         ],
         "double_click": true,
-        "normalize_text": false
+        "normalize_text": false,
+        "screen_delay": 0.3
       },
       {
         "step_id": "d2192412-22d3-4762-accc-bfb089a16e52",
@@ -57,7 +58,7 @@
         "enabled": true,
         "error_handling": "stop",
         "retry_count": 0,
-        "text": "${작업번호}",
+        "text": "${환자명}${작업번호}",
         "interval": 0.0,
         "use_variables": true
       },

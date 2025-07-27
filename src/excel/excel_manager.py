@@ -228,7 +228,7 @@ class ExcelManager:
         
         # Update current data with fresh DataFrame
         self._current_data.dataframe = df
-        self._current_data.row_count = len(df)
+        # row_count is a computed property, no need to set it explicitly
         
         self.logger.info(f"Reloaded {len(df)} rows from sheet '{current_sheet}'")
         

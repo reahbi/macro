@@ -377,6 +377,11 @@ class MainWindow(QMainWindow):
                 self.add_to_recent_macros(file_path)
                 self.update_window_title()
                 self.status_label.setText(f"Macro loaded from {os.path.basename(file_path)}")
+                
+                # Update execution widget with loaded macro
+                excel_manager = self.excel_widget.get_excel_manager()
+                self.execution_widget.set_macro_and_excel(macro, excel_manager)
+                
                 QMessageBox.information(self, "Success", "Macro loaded successfully.")
             else:
                 QMessageBox.critical(self, "Error", "Failed to load macro.")
@@ -482,6 +487,10 @@ class MainWindow(QMainWindow):
                 self.current_macro_path = file_path
                 self.update_window_title()
                 self.status_label.setText(f"Macro loaded from {os.path.basename(file_path)}")
+                
+                # Update execution widget with loaded macro
+                excel_manager = self.excel_widget.get_excel_manager()
+                self.execution_widget.set_macro_and_excel(macro, excel_manager)
             else:
                 QMessageBox.critical(self, "Error", f"Failed to load macro from {os.path.basename(file_path)}")
                 self.recent_macros.remove(file_path)

@@ -464,11 +464,15 @@ class PaddleTextExtractor:
                         
             self.logger.info(f"추출된 텍스트 항목: {len(text_results)}개")
             
-            # 디버그 로깅
+            # 디버그 로깅 - 항상 활성화
+            self.logger.info("=== OCR 텍스트 추출 결과 ===")
+            self.logger.info(f"검색 영역: {region if region else '전체 화면'}")
+            self.logger.info(f"추출된 텍스트 개수: {len(text_results)}개")
+            
             if len(text_results) > 0:
-                self.logger.debug("추출된 텍스트 목록:")
+                self.logger.info("추출된 텍스트 목록:")
                 for i, result in enumerate(text_results):
-                    self.logger.debug(f"  [{i}] '{result.text}' (신뢰도: {result.confidence:.2f})")
+                    self.logger.info(f"  [{i}] '{result.text}' 위치: {result.center}, 영역: {result.bbox}, 신뢰도: {result.confidence:.2f}")
                     
             return text_results
             
@@ -542,43 +546,68 @@ class PaddleTextExtractor:
             # 대상 텍스트 정규화
             target_normalized = normalize_special_chars(target_lower)
             
+            self.logger.info(f"=== 텍스트 검색 시작 ===")
+            self.logger.info(f"찾을 텍스트: '{target_text}'")
+            self.logger.info(f"정규화된 텍스트: '{target_normalized}'")
+            self.logger.info(f"검색 모드: {'정확 일치' if exact_match else '부분 일치'}")
+            
             # 매칭 로직
             best_match = None
             best_score = 0.0
             
-            for result in text_results:
+            for i, result in enumerate(text_results):
                 text_lower = result.text.lower().strip()
                 text_normalized = normalize_special_chars(text_lower)
+                
+                # 각 텍스트 비교 로그
+                self.logger.debug(f"  비교 [{i}]: OCR='{result.text}' → 정규화='{text_normalized}'")
                 
                 if exact_match:
                     # 정확한 매칭 - 정규화된 텍스트로 비교
                     if text_normalized == target_normalized:
+                        self.logger.info(f"  ✓ 정확히 일치! 위치: {result.center}")
                         return result
                 else:
                     # 부분 매칭 - 대상이 검출된 텍스트에 포함
                     if target_normalized in text_normalized:
                         # 매칭 점수 계산
                         score = len(target_normalized) / len(text_normalized)
+                        self.logger.debug(f"    → 부분 일치 (대상이 OCR에 포함), 점수: {score:.2f}")
                         if score > best_score:
                             best_match = result
                             best_score = score
                     # 검출된 텍스트가 대상에 포함 (부분 OCR 결과)
                     elif text_normalized in target_normalized and len(text_normalized) > 2:
                         score = len(text_normalized) / len(target_normalized)
+                        self.logger.debug(f"    → 부분 일치 (OCR이 대상에 포함), 점수: {score:.2f}")
                         if score > best_score:
                             best_match = result
                             best_score = score
                     # 공백 제거 후 비교 (띄어쓰기 차이 허용)
                     elif target_normalized.replace(' ', '') in text_normalized.replace(' ', ''):
                         score = len(target_normalized) / len(text_normalized) * 0.9  # 약간 낮은 점수
+                        self.logger.debug(f"    → 공백 무시 일치, 점수: {score:.2f}")
                         if score > best_score:
                             best_match = result
                             best_score = score
             
             if best_match:
-                self.logger.info(f"텍스트 '{target_text}' 찾음: {best_match.center}")
+                self.logger.info(f"=== 텍스트 찾음 ===")
+                self.logger.info(f"찾은 텍스트: '{best_match.text}'")
+                self.logger.info(f"위치: {best_match.center}")
+                self.logger.info(f"매칭 점수: {best_score:.2f}")
             else:
-                self.logger.info(f"텍스트 '{target_text}'를 찾을 수 없음")
+                self.logger.warning(f"=== 텍스트를 찾을 수 없음 ===")
+                self.logger.warning(f"찾으려던 텍스트: '{target_text}'")
+                self.logger.warning(f"검색 영역: {region if region else '전체 화면'}")
+                self.logger.warning(f"OCR로 추출된 텍스트 개수: {len(text_results)}개")
+                if len(text_results) > 0:
+                    self.logger.warning("가능한 원인:")
+                    self.logger.warning("1. 텍스트가 검색 영역 밖에 있음")
+                    self.logger.warning("2. OCR 인식 오류")
+                    self.logger.warning("3. 텍스트 형식 불일치 (띄어쓰기, 특수문자 등)")
+                else:
+                    self.logger.warning("OCR이 아무 텍스트도 추출하지 못했습니다. 검색 영역을 확인하세요.")
                 
             return best_match
             

@@ -8,6 +8,7 @@ numpy>=1.21.0
 
 # Screen Automation
 pyautogui>=0.9.53
+pyperclip>=1.8.0
 pillow>=8.3.0
 opencv-python>=4.5.0
 pynput>=1.7.0

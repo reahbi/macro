@@ -7,6 +7,7 @@ import time
 import os
 from typing import Dict, Any, Optional, Tuple
 import pyautogui
+import pyperclip
 import random
 import math
 from core.macro_types import MacroStep, StepType
@@ -86,14 +87,17 @@ class StepExecutor:
         handler = self._handlers.get(step.step_type)
         if not handler:
             raise NotImplementedError(f"No handler for step type: {step.step_type}")
-            
-        self.logger.debug(f"Executing step: {step.name} ({step.step_type.value})")
+        
+        self.logger.info(f"\n{'='*50}")
+        self.logger.info(f"단계 실행 시작: {step.name} ({step.step_type.value})")
+        self.logger.info(f"{'='*50}")
         
         try:
             result = handler(step)
+            self.logger.info(f"단계 실행 완료: {step.name}")
             return result
         except Exception as e:
-            self.logger.error(f"Step execution failed: {e}")
+            self.logger.error(f"단계 실행 실패: {step.name} - {e}")
             raise
             
     def _substitute_variables(self, text: str) -> str:
@@ -265,11 +269,9 @@ class StepExecutor:
         self._click_with_human_delay(click_x, click_y, double_click=double_click)
         
         if double_click:
-            self.logger.debug(f"Double clicked at: ({click_x}, {click_y}) with human-like movement")
             # IME 안정화 및 편집 모드 활성화 대기
+            self.logger.info(f"더블클릭 후 IME 안정화 대기 0.3초")
             time.sleep(0.3)
-        else:
-            self.logger.debug(f"Clicked at: ({click_x}, {click_y}) with human-like movement")
         
     def _get_absolute_position(self, x: int, y: int, relative_to: str) -> Tuple[int, int]:
         """Convert coordinates to absolute screen position"""
@@ -349,6 +351,10 @@ class StepExecutor:
             button: 마우스 버튼 ('left', 'right', 'middle')
             double_click: 더블클릭 여부
         """
+        # 클릭 전 위치
+        before_x, before_y = pyautogui.position()
+        self.logger.info(f"클릭 전 마우스 위치: ({before_x}, {before_y}) → 목표 위치: ({x}, {y})")
+        
         # 먼저 마우스를 자연스럽게 이동
         self._human_like_mouse_move(x, y)
         
@@ -360,11 +366,17 @@ class StepExecutor:
         # 클릭 수행
         if double_click:
             # 더블클릭 간격도 자연스럽게
+            self.logger.info(f"더블클릭 수행 중 - 위치: ({x}, {y}), 버튼: {button}")
             pyautogui.click(x, y, button=button)
             time.sleep(random.uniform(0.1, 0.2))
             pyautogui.click(x, y, button=button)
         else:
+            self.logger.info(f"클릭 수행 중 - 위치: ({x}, {y}), 버튼: {button}")
             pyautogui.click(x, y, button=button)
+        
+        # 클릭 후 위치 확인
+        after_x, after_y = pyautogui.position()
+        self.logger.info(f"클릭 후 마우스 위치: ({after_x}, {after_y})")
             
         # 클릭 후 아주 짧은 대기
         if self.enable_human_movement:
@@ -423,17 +435,40 @@ class StepExecutor:
         # 입력 전 IME 준비 대기
         time.sleep(0.1)
         
+        # 현재 마우스 위치 (입력 위치로 추정)
+        current_x, current_y = pyautogui.position()
+        
         text = step.text
-        self.logger.info(f"Keyboard type step - Original text: {text}")
-        self.logger.info(f"Use variables: {step.use_variables}")
-        self.logger.info(f"Available variables: {list(self.variables.keys()) if self.variables else 'None'}")
+        self.logger.info(f"======== 키보드 입력 시작 ========")
+        self.logger.info(f"현재 마우스 위치 (입력 위치): ({current_x}, {current_y})")
+        self.logger.info(f"원본 텍스트: '{text}'")
+        self.logger.info(f"변수 치환 사용: {step.use_variables}")
+        self.logger.info(f"사용 가능한 변수: {list(self.variables.keys()) if self.variables else '없음'}")
         
         # Substitute variables if enabled
         if step.use_variables:
             text = self._substitute_variables(text)
-            self.logger.info(f"After substitution: {text}")
-            
-        pyautogui.typewrite(text, interval=step.interval)
+            self.logger.info(f"치환된 텍스트: '{text}'")
+        
+        self.logger.info(f"입력 시작 - 텍스트: '{text}', 간격: {step.interval}초")
+        
+        # Check if text contains non-ASCII characters (like Korean)
+        if any(ord(char) > 127 for char in text):
+            self.logger.info("한글 또는 유니코드 문자 감지 - pyperclip을 사용하여 입력")
+            # Use clipboard method for non-ASCII text
+            pyperclip.copy(text)
+            # Small delay to ensure clipboard is ready
+            time.sleep(0.05)
+            # Paste using Ctrl+V
+            pyautogui.hotkey('ctrl', 'v')
+        else:
+            # Use typewrite for ASCII text
+            pyautogui.typewrite(text, interval=step.interval)
+        
+        # 입력 완료 후 위치
+        after_x, after_y = pyautogui.position()
+        self.logger.info(f"입력 완료 - 마우스 위치: ({after_x}, {after_y})")
+        self.logger.info(f"======== 키보드 입력 완료 ========")
         
     def _execute_keyboard_hotkey(self, step) -> None:
         """Execute keyboard hotkey"""
@@ -505,14 +540,21 @@ class StepExecutor:
             f"screenshot_{timestamp}.png"
         )
         
+        # 현재 마우스 위치
+        current_x, current_y = pyautogui.position()
+        self.logger.info(f"스크린샷 시작 - 현재 마우스 위치: ({current_x}, {current_y})")
+        
         if self._image_matcher and hasattr(step, 'region') and step.region:
             # Capture specific region
+            self.logger.info(f"영역 스크린샷: {step.region}")
             self._image_matcher.capture_region(step.region, filename)
         else:
             # Full screen capture
+            screen_width, screen_height = pyautogui.size()
+            self.logger.info(f"전체 화면 스크린샷: (0, 0, {screen_width}, {screen_height})")
             pyautogui.screenshot(filename)
             
-        self.logger.info(f"Screenshot saved: {filename}")
+        self.logger.info(f"스크린샷 저장 완료: {filename}")
         return filename
         
     def _execute_image_search(self, step) -> Optional[Tuple[int, int, int, int]]:
@@ -607,8 +649,12 @@ class StepExecutor:
             click_offset = getattr(step, 'click_offset', (0, 0))
             double_click = getattr(step, 'double_click', False)
             
-            # 3. 로깅
-            self.logger.info(f"Searching for text: {search_text}")
+            # 3. 상세 로깅
+            self.logger.info(f"======== 텍스트 검색 시작 ========")
+            self.logger.info(f"검색 텍스트: '{search_text}'")
+            self.logger.info(f"검색 영역: {region if region else '전체 화면'}")
+            self.logger.info(f"검색 옵션: exact_match={exact_match}, confidence={confidence}")
+            self.logger.info(f"클릭 옵션: click_on_found={click_on_found}, offset={click_offset}, double_click={double_click}")
             
             # Debug logging
             self._log_search_debug_info(search_text, exact_match, confidence, region, click_on_found, click_offset)
@@ -618,16 +664,27 @@ class StepExecutor:
             
             # Handle search result
             if result:
-                self.logger.info(f"Text found at: {result.center}")
+                self.logger.info(f"======== 텍스트 검색 성공 ========")
+                self.logger.info(f"찾은 텍스트: '{result.text}'")
+                self.logger.info(f"텍스트 영역: {result.bbox} (x, y, width, height)")
+                self.logger.info(f"텍스트 중심점: {result.center}")
+                self.logger.info(f"신뢰도: {result.confidence:.2f}")
                 
                 # Click if requested
                 if click_on_found:
+                    self.logger.info(f"클릭 설정: True, 오프셋: {click_offset}")
+                    click_x = result.center[0] + click_offset[0]
+                    click_y = result.center[1] + click_offset[1]
+                    self.logger.info(f"계산된 클릭 위치: ({click_x}, {click_y})")
                     self._perform_text_click(result, click_offset, double_click)
+                else:
+                    self.logger.info(f"클릭 설정: False (클릭하지 않음)")
                     
                 return result.center
             else:
                 # Text not found after all retries
-                self.logger.warning(f"Text not found: {search_text}")
+                self.logger.warning(f"======== 텍스트 검색 실패 ========")
+                self.logger.warning(f"찾을 수 없는 텍스트: '{search_text}'")
                 return None
                     
         except Exception as e:
