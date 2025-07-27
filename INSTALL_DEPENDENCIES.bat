@@ -75,7 +75,7 @@ echo Installing data processing libraries...
 py -3.11 -m pip install pandas>=1.3.0 openpyxl>=3.0.0 numpy>=1.21.0
 
 echo Installing automation libraries...
-py -3.11 -m pip install pyautogui>=0.9.53 pillow>=8.3.0 opencv-python>=4.5.0
+py -3.11 -m pip install pyautogui>=0.9.53 pyperclip>=1.8.0 pillow>=8.3.0 opencv-python>=4.5.0
 
 echo Installing screen capture...
 py -3.11 -m pip install screeninfo>=0.8.0 mss>=6.1.0
@@ -103,6 +103,7 @@ echo Testing package imports...
 py -3.11 -c "import PyQt5; print('✓ PyQt5 OK')" 2>nul
 py -3.11 -c "import pandas; print('✓ pandas OK')" 2>nul  
 py -3.11 -c "import pyautogui; print('✓ pyautogui OK')" 2>nul
+py -3.11 -c "import pyperclip; print('✓ pyperclip OK')" 2>nul
 py -3.11 -c "import cv2; print('✓ opencv OK')" 2>nul
 py -3.11 -c "import paddleocr; print('✓ PaddleOCR OK')" 2>nul
 

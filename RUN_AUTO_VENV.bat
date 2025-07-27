@@ -39,6 +39,13 @@ exit /b 1
 
 :run_app
 echo.
+echo Checking for required packages...
+python -c "import pyperclip" >nul 2>&1
+if errorlevel 1 (
+    echo pyperclip not found. Installing...
+    pip install pyperclip
+    echo.
+)
 echo Starting Excel Macro Automation...
 echo.
 python run_main.py
