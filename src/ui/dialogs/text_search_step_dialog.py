@@ -294,8 +294,15 @@ class TextSearchStepDialog(QDialog):
             self.step.excel_column = None  # Don't store separately
         
         # Update region - CRITICAL
-        self.step.region = self.region
-        print(f"DEBUG: Updated step.region to: {self.step.region}")
+        # Ensure region is stored as tuple for consistency
+        if self.region:
+            if isinstance(self.region, list):
+                self.step.region = tuple(self.region)
+            else:
+                self.step.region = self.region
+        else:
+            self.step.region = None
+        print(f"DEBUG: Updated step.region to: {self.step.region} (type: {type(self.step.region)})")
         
         # Update matching options
         self.step.exact_match = self.exact_match_check.isChecked()
@@ -306,6 +313,9 @@ class TextSearchStepDialog(QDialog):
         self.step.click_on_found = self.click_on_found_check.isChecked()
         self.step.click_offset = (self.offset_x_spin.value(), self.offset_y_spin.value())
         self.step.double_click = (self.click_type_combo.currentIndex() == 1)
+        
+        # Add screen stabilization delay option
+        self.step.screen_delay = getattr(self.step, 'screen_delay', 0.3)  # Default 300ms
         
         print(f"DEBUG: Step updated - region: {self.step.region}, search_text: {self.step.search_text}")
     
@@ -937,17 +947,23 @@ class TextSearchStepDialog(QDialog):
             search_text = f"${{{excel_column}}}"
             print(f"DEBUG [get_step_data]: Converting excel_column '{excel_column}' to variable format: '{search_text}'")
         
+        # Ensure region is tuple for consistency
+        region_data = None
+        if self.region:
+            region_data = tuple(self.region) if isinstance(self.region, list) else self.region
+        
         result = {
             'name': self.name_edit.text() or "텍스트 검색",
             'search_text': search_text,  # Excel 열도 변수 형식으로 여기에 저장
             'excel_column': excel_column,  # 호환성을 위해 유지
-            'region': self.region,
+            'region': region_data,
             'exact_match': self.exact_match_check.isChecked(),
             'confidence': self.confidence_spin.value(),
             'normalize_text': self.normalize_text_check.isChecked(),
             'click_on_found': self.click_on_found_check.isChecked(),
             'click_offset': (self.offset_x_spin.value(), self.offset_y_spin.value()),
-            'double_click': self.click_type_combo.currentIndex() == 1  # True if "더블 클릭" selected
+            'double_click': self.click_type_combo.currentIndex() == 1,  # True if "더블 클릭" selected
+            'screen_delay': getattr(self.step, 'screen_delay', 0.3)  # Include screen delay
         }
         
         print(f"DEBUG [get_step_data]: Returning data with excel_column: '{result['excel_column']}'")

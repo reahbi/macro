@@ -360,6 +360,7 @@ class TextSearchStep(MacroStep):
     click_offset: Tuple[int, int] = (0, 0)  # Offset from center of found text
     double_click: bool = False  # Whether to double click
     normalize_text: bool = False  # Whether to normalize special characters (e.g., full-width to half-width)
+    screen_delay: float = 0.3  # Screen stabilization delay in seconds
     
     def validate(self) -> List[str]:
         errors = []
@@ -428,7 +429,8 @@ class TextSearchStep(MacroStep):
             "click_on_found": self.click_on_found,
             "click_offset": list(self.click_offset),
             "double_click": self.double_click,
-            "normalize_text": self.normalize_text
+            "normalize_text": self.normalize_text,
+            "screen_delay": self.screen_delay
         })
         # Debug logging for save
         if self.excel_column:
@@ -447,6 +449,7 @@ class TextSearchStep(MacroStep):
         region = data.get("region")
         click_offset = data.get("click_offset", [0, 0])
         excel_column = data.get("excel_column")
+        screen_delay = data.get("screen_delay", 0.3)
         
         # Debug logging for load
         if excel_column:
@@ -468,7 +471,8 @@ class TextSearchStep(MacroStep):
             click_on_found=data.get("click_on_found", data.get("click_after_find", True)),
             click_offset=tuple(click_offset),
             double_click=data.get("double_click", False),
-            normalize_text=data.get("normalize_text", False)
+            normalize_text=data.get("normalize_text", False),
+            screen_delay=screen_delay
         )
 
 # Flow Control Steps

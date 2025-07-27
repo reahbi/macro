@@ -425,8 +425,11 @@ class StepExecutor:
     def _execute_text_search(self, step) -> Optional[Tuple[int, int]]:
         """Execute text search and optionally click"""
         try:
-            # Screen stabilization delay
-            time.sleep(0.5)  # 500ms delay for screen to stabilize
+            # Dynamic screen stabilization delay
+            stabilization_delay = getattr(step, 'screen_delay', 0.3)  # Default 300ms
+            if stabilization_delay > 0:
+                self.logger.debug(f"Waiting {stabilization_delay}s for screen stabilization")
+                time.sleep(stabilization_delay)
             
             if not self._text_extractor:
                 # OCR이 설치되지 않은 경우 사용자에게 알림
@@ -470,6 +473,9 @@ class StepExecutor:
                 # TextSearchStep attributes - this is the one with excel_column
                 search_text = getattr(step, 'search_text', '')
                 region = getattr(step, 'region', None)
+                # Normalize region data (convert list to tuple if needed)
+                if region and isinstance(region, list):
+                    region = tuple(region)
                 confidence = getattr(step, 'confidence', 0.5)
                 click_on_found = getattr(step, 'click_on_found', True)
                 click_offset = getattr(step, 'click_offset', (0, 0))
@@ -477,23 +483,44 @@ class StepExecutor:
                 fail_if_not_found = True  # TextSearchStep doesn't have this attribute
                 mask_in_logs = False  # TextSearchStep doesn't have this attribute
                 
-                # Handle Excel column reference for TextSearchStep
-                excel_column = getattr(step, 'excel_column', None)
-                if excel_column and (not search_text or search_text == ''):
-                    # Debug logging
-                    self.logger.debug(f"Excel column specified: '{excel_column}'")
-                    self.logger.debug(f"Available variables: {list(self.variables.keys()) if self.variables else 'None'}")
+                # Debug: Log original search_text value
+                self.logger.debug(f"TextSearchStep - original search_text: '{search_text}'")
+                
+                # Check if search_text contains variable reference like ${column_name}
+                import re
+                variable_pattern = r'^\$\{([^}]+)\}$'
+                variable_match = re.match(variable_pattern, search_text)
+                
+                if variable_match:
+                    # Extract column name from variable format
+                    column_name = variable_match.group(1)
+                    self.logger.debug(f"Found variable reference for column: '{column_name}'")
                     
                     if not self.variables:
-                        raise ValueError(f"엑셀 열 '{excel_column}'을(를) 사용하려고 했지만, 현재 엑셀 데이터가 없습니다. "
+                        raise ValueError(f"엑셀 열 '{column_name}'을(를) 사용하려고 했지만, 현재 엑셀 데이터가 없습니다. "
                                        f"이 단계가 Excel 반복 블록 안에 있는지 확인하세요.")
-                    elif excel_column in self.variables:
-                        search_text = str(self.variables[excel_column])
-                        self.logger.debug(f"Using Excel data from column '{excel_column}': {search_text}")
+                    elif column_name in self.variables:
+                        search_text = str(self.variables[column_name])
+                        self.logger.debug(f"Replaced with Excel data from column '{column_name}': {search_text}")
                     else:
                         available_cols = list(self.variables.keys())
-                        raise ValueError(f"엑셀 열 '{excel_column}'을(를) 현재 행 데이터에서 찾을 수 없습니다. "
+                        raise ValueError(f"엑셀 열 '{column_name}'을(를) 현재 행 데이터에서 찾을 수 없습니다. "
                                        f"사용 가능한 열: {available_cols}")
+                
+                # Legacy support: Handle excel_column attribute if search_text is empty
+                elif not search_text:
+                    excel_column = getattr(step, 'excel_column', None)
+                    if excel_column:
+                        self.logger.debug(f"Legacy: Excel column specified: '{excel_column}'")
+                        if not self.variables:
+                            raise ValueError(f"엑셀 열 '{excel_column}'을(를) 사용하려고 했지만, 현재 엑셀 데이터가 없습니다.")
+                        elif excel_column in self.variables:
+                            search_text = str(self.variables[excel_column])
+                            self.logger.debug(f"Legacy: Using Excel data from column '{excel_column}': {search_text}")
+                        else:
+                            available_cols = list(self.variables.keys())
+                            raise ValueError(f"엑셀 열 '{excel_column}'을(를) 찾을 수 없습니다. "
+                                           f"사용 가능한 열: {available_cols}")
             else:
                 # Legacy or unknown step type
                 search_text = getattr(step, 'text', getattr(step, 'search_text', ''))

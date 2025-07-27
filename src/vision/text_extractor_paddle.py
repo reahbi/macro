@@ -481,7 +481,7 @@ class PaddleTextExtractor:
     @measure_performance
     def find_text(self, target_text: str, region: Optional[Tuple[int, int, int, int]] = None,
                   exact_match: bool = False, confidence_threshold: float = 0.5,
-                  confidence: float = None) -> Optional[TextResult]:
+                  confidence: float = None, max_retries: int = 1) -> Optional[TextResult]:
         """
         특정 텍스트 찾기 (EasyOCR 인터페이스 호환)
         
@@ -491,6 +491,7 @@ class PaddleTextExtractor:
             exact_match: 정확히 일치 여부
             confidence_threshold: 최소 OCR 신뢰도
             confidence: 하위 호환성을 위한 매개변수
+            max_retries: 최대 재시도 횟수
             
         Returns:
             TextResult 또는 None
@@ -513,11 +514,33 @@ class PaddleTextExtractor:
                     self.logger.error(f"잘못된 영역 값: {region}, 오류: {e}")
                     return None
                     
+                # 영역 크기 검증
+                x, y, width, height = region
+                if width <= 0 or height <= 0:
+                    self.logger.error(f"잘못된 영역 크기: width={width}, height={height}")
+                    return None
+                    
             # 모든 텍스트 추출
             text_results = self.extract_text_from_region(region, confidence_threshold)
             
             # 대상 텍스트 정규화
             target_lower = target_text.lower().strip()
+            
+            # 특수 문자 정규화 (전각 -> 반각)
+            def normalize_special_chars(text):
+                """특수 문자 정규화"""
+                replacements = {
+                    '：': ':', '；': ';', '（': '(', '）': ')',
+                    '［': '[', '］': ']', '｛': '{', '｝': '}',
+                    '＜': '<', '＞': '>', '，': ',', '。': '.',
+                    '！': '!', '？': '?', '　': ' '
+                }
+                for full, half in replacements.items():
+                    text = text.replace(full, half)
+                return text
+            
+            # 대상 텍스트 정규화
+            target_normalized = normalize_special_chars(target_lower)
             
             # 매칭 로직
             best_match = None
@@ -525,21 +548,29 @@ class PaddleTextExtractor:
             
             for result in text_results:
                 text_lower = result.text.lower().strip()
+                text_normalized = normalize_special_chars(text_lower)
                 
                 if exact_match:
-                    if text_lower == target_lower:
+                    # 정확한 매칭 - 정규화된 텍스트로 비교
+                    if text_normalized == target_normalized:
                         return result
                 else:
                     # 부분 매칭 - 대상이 검출된 텍스트에 포함
-                    if target_lower in text_lower:
+                    if target_normalized in text_normalized:
                         # 매칭 점수 계산
-                        score = len(target_lower) / len(text_lower)
+                        score = len(target_normalized) / len(text_normalized)
                         if score > best_score:
                             best_match = result
                             best_score = score
                     # 검출된 텍스트가 대상에 포함 (부분 OCR 결과)
-                    elif text_lower in target_lower and len(text_lower) > 2:
-                        score = len(text_lower) / len(target_lower)
+                    elif text_normalized in target_normalized and len(text_normalized) > 2:
+                        score = len(text_normalized) / len(target_normalized)
+                        if score > best_score:
+                            best_match = result
+                            best_score = score
+                    # 공백 제거 후 비교 (띄어쓰기 차이 허용)
+                    elif target_normalized.replace(' ', '') in text_normalized.replace(' ', ''):
+                        score = len(target_normalized) / len(text_normalized) * 0.9  # 약간 낮은 점수
                         if score > best_score:
                             best_match = result
                             best_score = score
