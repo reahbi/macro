@@ -27,6 +27,7 @@ class TextSearchStepDialog(QDialog):
         self.step = step or TextSearchStep()
         self.excel_columns = excel_columns or []
         self.region = self.step.region
+        self.monitor_info = self.step.monitor_info  # Get monitor info from step
         self.text_extractor = TextExtractor()
         self.monitors = get_monitor_info()  # Get monitor information
         self._loading_data = False  # Flag to prevent region reset during data loading
@@ -533,24 +534,40 @@ class TextSearchStepDialog(QDialog):
         print("DEBUG: Selection cancelled")
         self.show()
         
-    def _on_region_selected(self, region: Tuple[int, int, int, int]):
+    def _on_region_selected(self, result):
         """Handle region selection"""
-        print(f"DEBUG: _on_region_selected called with region: {region}, type: {type(region)}")
+        print(f"DEBUG: _on_region_selected called with result: {result}, type: {type(result)}")
         try:
+            # Handle new format with monitor info
+            if isinstance(result, dict):
+                region = result.get("region")
+                self.monitor_info = result.get("monitor_info")
+                print(f"DEBUG: Extracted region: {region}, monitor_info: {self.monitor_info}")
+            else:
+                # Backward compatibility - old format
+                region = result
+                self.monitor_info = None
+                print(f"DEBUG: Using old format, region: {region}")
+            
             # Ensure region is properly formatted
             if region and len(region) == 4:
                 # Convert all values to integers to avoid any type issues
                 formatted_region = tuple(int(x) for x in region)
                 self.region = formatted_region
                 print(f"DEBUG: set region successful with formatted region: {formatted_region}")
-                self.region_label.setText(
-                    f"영역: ({formatted_region[0]}, {formatted_region[1]}) "
-                    f"크기: {formatted_region[2]}x{formatted_region[3]}"
-                )
+                
+                # Update label with monitor info if available
+                label_text = f"영역: ({formatted_region[0]}, {formatted_region[1]}) " \
+                           f"크기: {formatted_region[2]}x{formatted_region[3]}"
+                if self.monitor_info:
+                    monitor_name = self.monitor_info.get("name", "Unknown")
+                    label_text += f" ({monitor_name})"
+                self.region_label.setText(label_text)
                 print(f"DEBUG: region_label updated")
             else:
                 print(f"DEBUG: Invalid region: {region}")
                 self.region = None
+                self.monitor_info = None
                 self.region_label.setText("전체 화면")
             
             print(f"DEBUG: About to restore dialog visibility")
@@ -957,6 +974,7 @@ class TextSearchStepDialog(QDialog):
             'search_text': search_text,  # Excel 열도 변수 형식으로 여기에 저장
             'excel_column': excel_column,  # 호환성을 위해 유지
             'region': region_data,
+            'monitor_info': self.monitor_info,  # Add monitor info
             'exact_match': self.exact_match_check.isChecked(),
             'confidence': self.confidence_spin.value(),
             'normalize_text': self.normalize_text_check.isChecked(),

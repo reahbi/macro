@@ -74,6 +74,37 @@ class PaddleTextExtractor:
             if not PADDLEOCR_AVAILABLE:
                 self.logger.warning("PaddleOCR이 설치되지 않았습니다. 텍스트 검색 기능이 제한됩니다.")
             
+    def _save_debug_screenshot(self, region: Tuple[int, int, int, int], prefix: str = "debug"):
+        """디버그용 스크린샷 저장"""
+        try:
+            from pathlib import Path
+            from datetime import datetime
+            
+            # Create debug directory
+            debug_dir = Path("debug/ocr_regions")
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Capture region
+            with mss.mss() as sct:
+                # Virtual monitor 정보도 함께 로깅
+                virtual_monitor = sct.monitors[0]
+                self.logger.debug(f"Debug screenshot - Virtual monitor: {virtual_monitor}")
+                self.logger.debug(f"Debug screenshot - Region to capture: {region}")
+                
+                monitor = {"left": region[0], "top": region[1], 
+                          "width": region[2], "height": region[3]}
+                screenshot = sct.grab(monitor)
+                
+                # Save screenshot
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # 밀리초 포함
+                filename = debug_dir / f"{prefix}_{timestamp}_x{region[0]}_y{region[1]}_{region[2]}x{region[3]}.png"
+                mss.tools.to_png(screenshot.rgb, screenshot.size, output=str(filename))
+                
+                self.logger.info(f"디버그 스크린샷 저장: {filename}")
+                
+        except Exception as e:
+            self.logger.error(f"디버그 스크린샷 저장 실패: {e}")
+    
     def _get_ocr(self) -> Optional['PaddleOCR']:
         """PaddleOCR 인스턴스 생성 (지연 로딩)"""
         if not PADDLEOCR_AVAILABLE:
@@ -170,26 +201,53 @@ class PaddleTextExtractor:
     
     @measure_performance
     def extract_text_from_region(self, region: Optional[Tuple[int, int, int, int]] = None,
-                                confidence_threshold: float = 0.5) -> List[TextResult]:
+                                confidence_threshold: float = 0.5,
+                                monitor_info: Optional[Dict] = None) -> List[TextResult]:
         """
         화면 영역에서 텍스트 추출 (EasyOCR 인터페이스 호환)
         
         Args:
             region: (x, y, width, height) 또는 None (전체 화면)
             confidence_threshold: 최소 신뢰도
+            monitor_info: 모니터 정보 (multi-monitor support)
             
         Returns:
             TextResult 객체 리스트
         """
         try:
+            # Debug region information
+            if region:
+                self.logger.info(f"=== OCR 영역 검증 ===")
+                self.logger.info(f"입력된 영역: {region}")
+                if monitor_info:
+                    self.logger.info(f"모니터 정보: {monitor_info}")
+                
+                # Always save debug screenshot for troubleshooting
+                self._save_debug_screenshot(region, "ocr_region")
+            
             # 스크린샷 캡처
             monitor_offset_x = 0
             monitor_offset_y = 0
             
             with mss.mss() as sct:
+                # 디버그: virtual monitor 정보 출력
+                virtual_monitor = sct.monitors[0]
+                self.logger.debug(f"Virtual monitor info: {virtual_monitor}")
+                
                 if region:
                     x, y, width, height = region
+                    # Validate region coordinates
+                    if width <= 0 or height <= 0:
+                        self.logger.error(f"잘못된 영역 크기: width={width}, height={height}")
+                        return []
+                    
+                    # 기존 매크로 호환성: monitor_info가 없으면 좌표 그대로 사용
+                    # (기존 매크로는 Qt 절대 좌표로 저장되어 있음)
+                    if not monitor_info:
+                        self.logger.info("기존 매크로 형식 감지 - 좌표 변환 없이 사용")
+                    
                     monitor = {"left": x, "top": y, "width": width, "height": height}
+                    self.logger.info(f"mss로 캡처할 영역: {monitor}")
                 else:
                     monitor = sct.monitors[0]  # 모든 모니터
                     monitor_offset_x = monitor["left"]
@@ -485,7 +543,8 @@ class PaddleTextExtractor:
     @measure_performance
     def find_text(self, target_text: str, region: Optional[Tuple[int, int, int, int]] = None,
                   exact_match: bool = False, confidence_threshold: float = 0.5,
-                  confidence: float = None, max_retries: int = 1) -> Optional[TextResult]:
+                  confidence: float = None, max_retries: int = 1,
+                  monitor_info: Optional[Dict] = None) -> Optional[TextResult]:
         """
         특정 텍스트 찾기 (EasyOCR 인터페이스 호환)
         
@@ -496,6 +555,7 @@ class PaddleTextExtractor:
             confidence_threshold: 최소 OCR 신뢰도
             confidence: 하위 호환성을 위한 매개변수
             max_retries: 최대 재시도 횟수
+            monitor_info: 모니터 정보 (multi-monitor support)
             
         Returns:
             TextResult 또는 None
@@ -524,8 +584,8 @@ class PaddleTextExtractor:
                     self.logger.error(f"잘못된 영역 크기: width={width}, height={height}")
                     return None
                     
-            # 모든 텍스트 추출
-            text_results = self.extract_text_from_region(region, confidence_threshold)
+            # 모든 텍스트 추출 (monitor_info 전달)
+            text_results = self.extract_text_from_region(region, confidence_threshold, monitor_info)
             
             # 대상 텍스트 정규화
             target_lower = target_text.lower().strip()

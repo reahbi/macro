@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0.0",
+  "macro": {
+    "macro_id": "ef0e0229-0aed-4999-885f-53d9a214893f",
+    "name": "새 매크로",
+    "description": "",
+    "version": "1.0.0",
+    "created_at": "2025-07-27T23:46:08.855397",
+    "updated_at": "2025-07-27T23:46:51.863381",
+    "steps": [
+      {
+        "step_id": "eadb916f-2aaf-452e-9fcd-3383871ce9f0",
+        "step_type": "excel_row_start",
+        "name": "Excel 행 반복 시작",
+        "description": "",
+        "enabled": true,
+        "error_handling": "stop",
+        "retry_count": 0,
+        "repeat_mode": "incomplete_only",
+        "repeat_count": 0,
+        "start_row": 0,
+        "end_row": 0,
+        "pair_id": "c127771b-2ef1-45d2-b637-4a6e4d459671"
+      },
+      {
+        "step_id": "74b0ed92-db7a-4c36-b7e9-3b88e5229e8a",
+        "step_type": "ocr_text",
+        "name": "텍스트 검색",
+        "description": "",
+        "enabled": true,
+        "error_handling": "stop",
+        "retry_count": 0,
+        "type": "ocr_text",
+        "search_text": "${환자명}",
+        "excel_column": null,
+        "region": [
+          14,
+          115,
+          487,
+          230
+        ],
+        "monitor_info": null,
+        "exact_match": false,
+        "confidence": 0.5,
+        "click_on_found": true,
+        "click_offset": [
+          0,
+          0
+        ],
+        "double_click": true,
+        "normalize_text": false,
+        "screen_delay": 0.3
+      },
+      {
+        "step_id": "0b061f65-02c7-4691-8742-2e3b1c26b2ed",
+        "step_type": "keyboard_type",
+        "name": "텍스트 입력",
+        "description": "",
+        "enabled": true,
+        "error_handling": "stop",
+        "retry_count": 0,
+        "text": "${작업번호}${환자명}",
+        "interval": 0.0,
+        "use_variables": true
+      },
+      {
+        "step_id": "24ec56e2-6841-4ccc-a366-6e0fd7e62940",
+        "step_type": "excel_row_end",
+        "name": "Excel 행 반복 끝",
+        "description": "",
+        "enabled": true,
+        "error_handling": "stop",
+        "retry_count": 0,
+        "pair_id": "c127771b-2ef1-45d2-b637-4a6e4d459671",
+        "mark_as_complete": true,
+        "completion_status": "완료"
+      }
+    ],
+    "variables": {},
+    "metadata": {}
+  }
+}

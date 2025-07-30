@@ -221,7 +221,8 @@ class StepExecutor:
             self.logger.debug(f"클릭 옵션: click_on_found={click_on_found}, offset={click_offset}")
     
     def _search_text_with_retry(self, search_text: str, region: Optional[Tuple[int, int, int, int]],
-                                exact_match: bool, confidence: float, step: MacroStep) -> Optional[Any]:
+                                exact_match: bool, confidence: float, step: MacroStep, 
+                                monitor_info: Optional[Dict] = None) -> Optional[Any]:
         """재시도 로직을 포함한 텍스트 검색"""
         max_retries = step.retry_count if hasattr(step, 'retry_count') and step.retry_count > 0 else 3
         retry_delay = 1.0
@@ -232,12 +233,13 @@ class StepExecutor:
         result = None
         for attempt in range(max_retries):
             try:
-                # 텍스트 검색 수행
+                # 텍스트 검색 수행 (monitor_info 전달)
                 result = self._text_extractor.find_text(
                     search_text,
                     region=region,
                     exact_match=exact_match,
-                    confidence_threshold=confidence
+                    confidence_threshold=confidence,
+                    monitor_info=monitor_info
                 )
                 
                 if result:
@@ -643,6 +645,7 @@ class StepExecutor:
             region = getattr(step, 'region', None)
             if region and isinstance(region, list):
                 region = tuple(region)
+            monitor_info = getattr(step, 'monitor_info', None)  # Get monitor info
             confidence = getattr(step, 'confidence', 0.5)
             exact_match = getattr(step, 'exact_match', False)
             click_on_found = getattr(step, 'click_on_found', True)
@@ -653,6 +656,8 @@ class StepExecutor:
             self.logger.info(f"======== 텍스트 검색 시작 ========")
             self.logger.info(f"검색 텍스트: '{search_text}'")
             self.logger.info(f"검색 영역: {region if region else '전체 화면'}")
+            if monitor_info:
+                self.logger.info(f"모니터 정보: {monitor_info.get('name', 'Unknown')} (Index: {monitor_info.get('index', 'N/A')})")
             self.logger.info(f"검색 옵션: exact_match={exact_match}, confidence={confidence}")
             self.logger.info(f"클릭 옵션: click_on_found={click_on_found}, offset={click_offset}, double_click={double_click}")
             
@@ -660,7 +665,7 @@ class StepExecutor:
             self._log_search_debug_info(search_text, exact_match, confidence, region, click_on_found, click_offset)
             
             # Perform text search with retry logic
-            result = self._search_text_with_retry(search_text, region, exact_match, confidence, step)
+            result = self._search_text_with_retry(search_text, region, exact_match, confidence, step, monitor_info)
             
             # Handle search result
             if result:

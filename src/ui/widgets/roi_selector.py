@@ -2,17 +2,21 @@
 Region of Interest (ROI) selector widget with transparent overlay
 """
 
-from typing import Optional, Tuple, Callable
+from typing import Optional, Tuple, Callable, Dict
 from PyQt5.QtWidgets import QWidget, QApplication, QLabel, QVBoxLayout, QDialog
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QPixmap, QFont, QCursor, QPalette
 import sys
+import mss
+from datetime import datetime
+import os
+from pathlib import Path
 
 class ROISelectorOverlay(QDialog):
     """Transparent overlay for ROI selection"""
     
     # Signals
-    selectionComplete = pyqtSignal(tuple)  # (x, y, width, height)
+    selectionComplete = pyqtSignal(dict)  # {"region": (x, y, width, height), "monitor_info": {...}}
     selectionCancelled = pyqtSignal()
     
     def __init__(self, parent=None, monitor_bounds=None):
@@ -24,6 +28,11 @@ class ROISelectorOverlay(QDialog):
         self.end_point = QPoint()
         self.selection_rect = QRect()
         self.monitor_bounds = monitor_bounds  # Restrict to specific monitor if provided
+        
+        # mss instance for consistent coordinate system
+        self.sct = mss.mss()
+        self.monitors = self.sct.monitors
+        self.virtual_monitor = self.monitors[0]  # Combined virtual screen
         
         # UI setup
         # Use flags that work well on Windows
@@ -46,16 +55,12 @@ class ROISelectorOverlay(QDialog):
             self._setup_multi_monitor()
         
     def _setup_multi_monitor(self):
-        """Setup to cover all monitors"""
-        # Get combined screen geometry
-        desktop = QApplication.desktop()
-        total_rect = QRect()
-        
-        for i in range(desktop.screenCount()):
-            screen_rect = desktop.screenGeometry(i)
-            total_rect = total_rect.united(screen_rect)
-            
-        self.setGeometry(total_rect)
+        """Setup to cover all monitors using mss coordinates"""
+        # Use mss virtual monitor which covers all screens
+        vm = self.virtual_monitor
+        # mss uses absolute coordinates including negative values
+        self.setGeometry(vm['left'], vm['top'], vm['width'], vm['height'])
+        print(f"DEBUG: Multi-monitor setup: {vm}")
         
     def _setup_single_monitor(self, monitor_bounds):
         """Setup to cover a single monitor"""
@@ -141,10 +146,23 @@ class ROISelectorOverlay(QDialog):
             
             # Emit result if selection is valid
             if w > 5 and h > 5:
-                region = (int(x), int(y), int(w), int(h))
-                print(f"DEBUG: ROI selection complete with region: {region}, type: {type(region)}")
-                self.selectionComplete.emit(region)
-                print(f"DEBUG: selectionComplete signal emitted with region: {region}")
+                # Find which monitor contains this region
+                monitor_info = self._get_monitor_for_region(x, y, w, h)
+                
+                # Create result with absolute coordinates only
+                # (mss also uses absolute coordinates, no conversion needed)
+                result = {
+                    "region": (int(x), int(y), int(w), int(h)),  # Absolute coordinates
+                    "monitor_info": monitor_info,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                print(f"DEBUG: ROI selection complete with result: {result}")
+                self.selectionComplete.emit(result)
+                print(f"DEBUG: selectionComplete signal emitted")
+                
+                # Save preview screenshot for debugging
+                self._save_preview(x, y, w, h)
             else:
                 print(f"DEBUG: ROI selection too small: w={w}, h={h}")
             
@@ -241,21 +259,86 @@ class ROISelectorOverlay(QDialog):
                         rect.y() + rect.height() - handle_size//2,
                         handle_size, handle_size)
                         
+    def _get_monitor_for_region(self, x: int, y: int, w: int, h: int) -> Dict:
+        """Find which monitor contains the center of the region"""
+        center_x = x + w // 2
+        center_y = y + h // 2
+        
+        # Check each monitor (skip index 0 which is the virtual monitor)
+        for i, monitor in enumerate(self.monitors[1:], 1):
+            if (monitor['left'] <= center_x < monitor['left'] + monitor['width'] and
+                monitor['top'] <= center_y < monitor['top'] + monitor['height']):
+                return {
+                    "index": i,
+                    "name": f"Monitor {i}",
+                    "bounds": {
+                        "left": monitor['left'],
+                        "top": monitor['top'],
+                        "width": monitor['width'],
+                        "height": monitor['height']
+                    },
+                    "relative_region": (
+                        x - monitor['left'],
+                        y - monitor['top'],
+                        w,
+                        h
+                    )
+                }
+        
+        # Default to primary monitor if not found
+        primary = self.monitors[1] if len(self.monitors) > 1 else self.virtual_monitor
+        return {
+            "index": 1,
+            "name": "Primary Monitor",
+            "bounds": {
+                "left": primary['left'],
+                "top": primary['top'],
+                "width": primary['width'],
+                "height": primary['height']
+            },
+            "relative_region": (x, y, w, h)
+        }
+    
+    def _save_preview(self, x: int, y: int, w: int, h: int):
+        """Save a preview screenshot of the selected region"""
+        try:
+            # Create debug directory if it doesn't exist
+            debug_dir = Path("debug/roi_previews")
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Capture the region
+            monitor = {"left": x, "top": y, "width": w, "height": h}
+            screenshot = self.sct.grab(monitor)
+            
+            # Save with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = debug_dir / f"roi_preview_{timestamp}.png"
+            mss.tools.to_png(screenshot.rgb, screenshot.size, output=str(filename))
+            
+            print(f"DEBUG: ROI preview saved to {filename}")
+            
+        except Exception as e:
+            print(f"DEBUG: Failed to save ROI preview: {e}")
+    
     def close(self):
         """Clean up and close"""
         print("DEBUG: ROI close() called")
         self.releaseMouse()
         self.releaseKeyboard()
+        if hasattr(self, 'sct'):
+            self.sct.close()
         self.accept()  # Close the dialog properly
 
 class ROISelectorWidget(QWidget):
     """Widget for ROI selection with preview"""
     
-    regionSelected = pyqtSignal(tuple)  # (x, y, width, height)
+    regionSelected = pyqtSignal(tuple)  # (x, y, width, height) - for backward compatibility
+    regionSelectedEx = pyqtSignal(dict)  # Extended info with monitor data
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_region: Optional[Tuple[int, int, int, int]] = None
+        self.current_region_info: Optional[Dict] = None
         self.init_ui()
         
     def init_ui(self):
@@ -290,11 +373,24 @@ class ROISelectorWidget(QWidget):
         self.selector.selectionCancelled.connect(self._on_selection_cancelled)
         self.selector.start_selection()
         
-    def _on_selection_complete(self, region: Tuple[int, int, int, int]):
+    def _on_selection_complete(self, result: Dict):
         """Handle selection completion"""
+        # Extract region for backward compatibility
+        region = result["region"]
         self.current_region = region
-        self.info_label.setText(f"영역: {region[0]}, {region[1]} - {region[2]}×{region[3]}")
-        self.regionSelected.emit(region)
+        self.current_region_info = result
+        
+        # Update info with monitor details
+        monitor_info = result.get("monitor_info", {})
+        monitor_name = monitor_info.get("name", "Unknown")
+        self.info_label.setText(
+            f"영역: {region[0]}, {region[1]} - {region[2]}×{region[3]} "
+            f"({monitor_name})"
+        )
+        
+        # Emit both signals
+        self.regionSelected.emit(region)  # Backward compatibility
+        self.regionSelectedEx.emit(result)  # Extended info
         
         # Capture and show preview
         self._update_preview()
@@ -366,3 +462,7 @@ class ROISelectorWidget(QWidget):
     def get_region(self) -> Optional[Tuple[int, int, int, int]]:
         """Get current region"""
         return self.current_region
+    
+    def get_region_info(self) -> Optional[Dict]:
+        """Get extended region info with monitor data"""
+        return self.current_region_info

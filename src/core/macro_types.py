@@ -354,6 +354,7 @@ class TextSearchStep(MacroStep):
     search_text: str = ""  # Text to search for (can include {{variables}})
     excel_column: Optional[str] = None  # Excel column to bind for dynamic text
     region: Optional[tuple] = None  # (x, y, width, height)
+    monitor_info: Optional[Dict[str, Any]] = None  # Monitor information for multi-monitor support
     exact_match: bool = False
     confidence: float = 0.5
     click_on_found: bool = True
@@ -424,6 +425,7 @@ class TextSearchStep(MacroStep):
             "search_text": self.search_text,
             "excel_column": self.excel_column,
             "region": list(self.region) if self.region else None,
+            "monitor_info": self.monitor_info,  # Save monitor info
             "exact_match": self.exact_match,
             "confidence": self.confidence,
             "click_on_found": self.click_on_found,
@@ -439,6 +441,9 @@ class TextSearchStep(MacroStep):
         if self.region:
             import sys
             print(f"DEBUG [TextSearchStep.to_dict]: Saving with region={self.region}", file=sys.stderr)
+        if self.monitor_info:
+            import sys
+            print(f"DEBUG [TextSearchStep.to_dict]: Saving with monitor_info={self.monitor_info}", file=sys.stderr)
         else:
             import sys
             print(f"DEBUG [TextSearchStep.to_dict]: No region to save (region is None or empty)", file=sys.stderr)
@@ -450,11 +455,15 @@ class TextSearchStep(MacroStep):
         click_offset = data.get("click_offset", [0, 0])
         excel_column = data.get("excel_column")
         screen_delay = data.get("screen_delay", 0.3)
+        monitor_info = data.get("monitor_info")  # Load monitor info
         
         # Debug logging for load
         if excel_column:
             import sys
             print(f"DEBUG [TextSearchStep.from_dict]: Loading with excel_column='{excel_column}'", file=sys.stderr)
+        if monitor_info:
+            import sys
+            print(f"DEBUG [TextSearchStep.from_dict]: Loading with monitor_info={monitor_info}", file=sys.stderr)
         
         return cls(
             step_id=data.get("step_id", str(uuid.uuid4())),
@@ -466,6 +475,7 @@ class TextSearchStep(MacroStep):
             search_text=data.get("search_text", ""),
             excel_column=excel_column,
             region=tuple(region) if region else None,
+            monitor_info=monitor_info,  # Add monitor info
             exact_match=data.get("exact_match", False),
             confidence=data.get("confidence", 0.5),
             click_on_found=data.get("click_on_found", data.get("click_after_find", True)),
