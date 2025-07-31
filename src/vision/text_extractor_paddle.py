@@ -145,30 +145,33 @@ class PaddleTextExtractor:
                     
                     # 재시도 횟수에 따라 다른 초기화 방법 시도
                     if retry_count == 0:
-                        # 첫 번째 시도: 공식 문서 기반 최신 API 사용
+                        # 첫 번째 시도: PP-OCRv5 명시적 설정
                         init_params = {
                             'lang': 'korean',
+                            'ocr_version': 'PP-OCRv5',  # PP-OCRv5 명시
                             'use_angle_cls': True,  # 텍스트 각도 분류
-                            'device': 'gpu' if use_gpu else 'cpu',  # use_gpu 대신 device 사용
+                            'device': 'gpu' if use_gpu else 'cpu',  # 최신 API 사용
                             'enable_mkldnn': not use_gpu,  # CPU일 때만 MKL-DNN 사용
                             'cpu_threads': min(8, multiprocessing.cpu_count()) if not use_gpu else 8,
                         }
                         self.logger.info(f"초기화 파라미터 (시도 1): {init_params}")
                     elif retry_count == 1:
-                        # 두 번째 시도: CPU 전용 기본 옵션
+                        # 두 번째 시도: 모바일 모델 사용 (더 가벼움)
                         init_params = {
                             'lang': 'korean',
-                            'use_angle_cls': True,
-                            'device': 'cpu',  # device 파라미터 사용
+                            'text_detection_model_name': 'PP-OCRv5_mobile_det',
+                            'text_recognition_model_name': 'PP-OCRv5_mobile_rec',
+                            'device': 'cpu',
                             'enable_mkldnn': True,
                             'cpu_threads': 4,
                         }
-                        self.logger.info(f"초기화 파라미터 (시도 2): {init_params}")
+                        self.logger.info(f"초기화 파라미터 (시도 2 - 모바일 모델): {init_params}")
                     else:
                         # 세 번째 시도: 최소 옵션
                         init_params = {
                             'lang': 'korean',
-                            'device': 'cpu',  # device 파라미터만 사용
+                            'device': 'cpu',
+                            'ocr_version': 'PP-OCRv5',  # PP-OCRv5 명시
                         }
                         self.logger.info(f"초기화 파라미터 (시도 3): {init_params}")
                     
