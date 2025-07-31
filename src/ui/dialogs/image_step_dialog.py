@@ -853,9 +853,141 @@ class ImageSearchStepDialog(ImageStepDialog):
         click_group.setLayout(click_layout)
         layout.addWidget(click_group)
         
+        # NEW: Actions section (optional)
+        actions_group = QGroupBox("액션 (선택사항)")
+        actions_layout = QVBoxLayout()
+        
+        # Found action
+        found_group = QGroupBox("✅ 찾았을 때")
+        found_layout = QVBoxLayout()
+        
+        # Enable found action checkbox
+        self.enable_found_action_check = QCheckBox("액션 활성화")
+        found_layout.addWidget(self.enable_found_action_check)
+        
+        # Found action combo
+        found_action_layout = QHBoxLayout()
+        found_action_layout.addWidget(QLabel("액션:"))
+        self.found_action_combo = QComboBox()
+        self.found_action_combo.addItems([
+            "클릭", "더블클릭", "우클릭", "텍스트 입력", 
+            "계속", "중지", "위치 저장"
+        ])
+        self.found_action_combo.setEnabled(False)
+        found_action_layout.addWidget(self.found_action_combo)
+        found_layout.addLayout(found_action_layout)
+        
+        # Found action parameters
+        self.found_param_widget = QWidget()
+        self.found_param_layout = QVBoxLayout(self.found_param_widget)
+        self.found_param_widget.setEnabled(False)
+        found_layout.addWidget(self.found_param_widget)
+        
+        # Wait after action
+        wait_layout = QHBoxLayout()
+        wait_layout.addWidget(QLabel("대기 시간:"))
+        self.found_wait_spin = QSpinBox()
+        self.found_wait_spin.setMinimum(0)
+        self.found_wait_spin.setMaximum(10)
+        self.found_wait_spin.setValue(0)
+        self.found_wait_spin.setSuffix("초")
+        self.found_wait_spin.setEnabled(False)
+        wait_layout.addWidget(self.found_wait_spin)
+        wait_layout.addStretch()
+        found_layout.addLayout(wait_layout)
+        
+        # Connect signals
+        self.enable_found_action_check.toggled.connect(self.found_action_combo.setEnabled)
+        self.enable_found_action_check.toggled.connect(self.found_param_widget.setEnabled)
+        self.enable_found_action_check.toggled.connect(self.found_wait_spin.setEnabled)
+        self.found_action_combo.currentTextChanged.connect(self._update_found_params)
+        
+        found_group.setLayout(found_layout)
+        actions_layout.addWidget(found_group)
+        
+        # Not found action
+        not_found_group = QGroupBox("❌ 못 찾았을 때")
+        not_found_layout = QVBoxLayout()
+        
+        # Enable not found action checkbox
+        self.enable_not_found_action_check = QCheckBox("액션 활성화")
+        not_found_layout.addWidget(self.enable_not_found_action_check)
+        
+        # Not found action combo
+        not_found_action_layout = QHBoxLayout()
+        not_found_action_layout.addWidget(QLabel("액션:"))
+        self.not_found_action_combo = QComboBox()
+        self.not_found_action_combo.addItems([
+            "계속", "중지", "재시도", "행 건너뛰기", "경고 표시"
+        ])
+        self.not_found_action_combo.setEnabled(False)
+        not_found_action_layout.addWidget(self.not_found_action_combo)
+        not_found_layout.addLayout(not_found_action_layout)
+        
+        # Not found action parameters
+        self.not_found_param_widget = QWidget()
+        self.not_found_param_layout = QVBoxLayout(self.not_found_param_widget)
+        self.not_found_param_widget.setEnabled(False)
+        not_found_layout.addWidget(self.not_found_param_widget)
+        
+        # Connect signals
+        self.enable_not_found_action_check.toggled.connect(self.not_found_action_combo.setEnabled)
+        self.enable_not_found_action_check.toggled.connect(self.not_found_param_widget.setEnabled)
+        self.not_found_action_combo.currentTextChanged.connect(self._update_not_found_params)
+        
+        not_found_group.setLayout(not_found_layout)
+        actions_layout.addWidget(not_found_group)
+        
+        actions_group.setLayout(actions_layout)
+        layout.addWidget(actions_group)
+        
+    def _update_found_params(self, action: str):
+        """Update found action parameters based on selected action"""
+        # Clear existing parameters
+        while self.found_param_layout.count():
+            child = self.found_param_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+                
+        if action == "텍스트 입력":
+            label = QLabel("입력할 텍스트:")
+            self.found_text_input = QLineEdit()
+            self.found_text_input.setPlaceholderText("{{변수}} 사용 가능")
+            self.found_param_layout.addWidget(label)
+            self.found_param_layout.addWidget(self.found_text_input)
+        elif action == "위치 저장":
+            label = QLabel("변수명:")
+            self.found_var_input = QLineEdit()
+            self.found_var_input.setPlaceholderText("found_position")
+            self.found_param_layout.addWidget(label)
+            self.found_param_layout.addWidget(self.found_var_input)
+            
+    def _update_not_found_params(self, action: str):
+        """Update not found action parameters based on selected action"""
+        # Clear existing parameters
+        while self.not_found_param_layout.count():
+            child = self.not_found_param_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+                
+        if action == "재시도":
+            label = QLabel("최대 재시도 횟수:")
+            self.retry_count_spin = QSpinBox()
+            self.retry_count_spin.setMinimum(1)
+            self.retry_count_spin.setMaximum(10)
+            self.retry_count_spin.setValue(3)
+            self.not_found_param_layout.addWidget(label)
+            self.not_found_param_layout.addWidget(self.retry_count_spin)
+        elif action == "경고 표시":
+            label = QLabel("경고 메시지:")
+            self.alert_text_input = QLineEdit()
+            self.alert_text_input.setText("이미지를 찾을 수 없습니다")
+            self.not_found_param_layout.addWidget(label)
+            self.not_found_param_layout.addWidget(self.alert_text_input)
+        
     def get_custom_data(self) -> Dict[str, Any]:
         """Get search-specific data"""
-        return {
+        data = {
             'step_type': StepType.IMAGE_SEARCH,
             'confidence': self.confidence_spin.value(),
             'search_all': self.search_all_check.isChecked(),
@@ -864,6 +996,59 @@ class ImageSearchStepDialog(ImageStepDialog):
             'click_offset': (self.offset_x_spin.value(), self.offset_y_spin.value()),
             'double_click': self.click_type_combo.currentIndex() == 1  # True if "더블 클릭" selected
         }
+        
+        # NEW: Add optional action properties
+        if self.enable_found_action_check.isChecked():
+            action_map = {
+                "클릭": "click",
+                "더블클릭": "double_click",
+                "우클릭": "right_click",
+                "텍스트 입력": "type",
+                "계속": "continue",
+                "중지": "stop",
+                "위치 저장": "save_position"
+            }
+            
+            on_found = {
+                "action": action_map.get(self.found_action_combo.currentText(), "continue"),
+                "params": {}
+            }
+            
+            # Add action-specific parameters
+            if self.found_action_combo.currentText() == "텍스트 입력" and hasattr(self, 'found_text_input'):
+                on_found["params"]["text"] = self.found_text_input.text()
+            elif self.found_action_combo.currentText() == "위치 저장" and hasattr(self, 'found_var_input'):
+                on_found["params"]["variable"] = self.found_var_input.text()
+                
+            # Add wait time if set
+            if self.found_wait_spin.value() > 0:
+                on_found["params"]["wait_time"] = self.found_wait_spin.value()
+                
+            data["on_found"] = on_found
+            
+        if self.enable_not_found_action_check.isChecked():
+            action_map = {
+                "계속": "continue",
+                "중지": "stop",
+                "재시도": "retry",
+                "행 건너뛰기": "skip_row",
+                "경고 표시": "alert"
+            }
+            
+            on_not_found = {
+                "action": action_map.get(self.not_found_action_combo.currentText(), "continue"),
+                "params": {}
+            }
+            
+            # Add action-specific parameters
+            if self.not_found_action_combo.currentText() == "재시도" and hasattr(self, 'retry_count_spin'):
+                on_not_found["params"]["max_retries"] = self.retry_count_spin.value()
+            elif self.not_found_action_combo.currentText() == "경고 표시" and hasattr(self, 'alert_text_input'):
+                on_not_found["params"]["message"] = self.alert_text_input.text()
+                
+            data["on_not_found"] = on_not_found
+            
+        return data
         
     def load_step_data(self):
         """Load image search step data"""
@@ -883,6 +1068,69 @@ class ImageSearchStepDialog(ImageStepDialog):
                 
         if self.step and hasattr(self.step, 'double_click'):
             self.click_type_combo.setCurrentIndex(1 if self.step.double_click else 0)
+            
+        # NEW: Load optional action properties
+        if self.step and hasattr(self.step, 'on_found') and self.step.on_found:
+            self.enable_found_action_check.setChecked(True)
+            
+            # Map action to combo index
+            action_map = {
+                "click": "클릭",
+                "double_click": "더블클릭",
+                "right_click": "우클릭",
+                "type": "텍스트 입력",
+                "continue": "계속",
+                "stop": "중지",
+                "save_position": "위치 저장"
+            }
+            
+            action_type = self.step.on_found.get("action", "continue")
+            action_text = action_map.get(action_type, "계속")
+            index = self.found_action_combo.findText(action_text)
+            if index >= 0:
+                self.found_action_combo.setCurrentIndex(index)
+                
+            # Load parameters
+            params = self.step.on_found.get("params", {})
+            if "wait_time" in params:
+                self.found_wait_spin.setValue(params["wait_time"])
+                
+            # Trigger parameter update to load specific params
+            self._update_found_params(action_text)
+            
+            # Load action-specific parameters
+            if action_type == "type" and hasattr(self, 'found_text_input'):
+                self.found_text_input.setText(params.get("text", ""))
+            elif action_type == "save_position" and hasattr(self, 'found_var_input'):
+                self.found_var_input.setText(params.get("variable", ""))
+                
+        if self.step and hasattr(self.step, 'on_not_found') and self.step.on_not_found:
+            self.enable_not_found_action_check.setChecked(True)
+            
+            # Map action to combo index
+            action_map = {
+                "continue": "계속",
+                "stop": "중지",
+                "retry": "재시도",
+                "skip_row": "행 건너뛰기",
+                "alert": "경고 표시"
+            }
+            
+            action_type = self.step.on_not_found.get("action", "continue")
+            action_text = action_map.get(action_type, "계속")
+            index = self.not_found_action_combo.findText(action_text)
+            if index >= 0:
+                self.not_found_action_combo.setCurrentIndex(index)
+                
+            # Trigger parameter update to load specific params
+            self._update_not_found_params(action_text)
+            
+            # Load action-specific parameters
+            params = self.step.on_not_found.get("params", {})
+            if action_type == "retry" and hasattr(self, 'retry_count_spin'):
+                self.retry_count_spin.setValue(params.get("max_retries", 3))
+            elif action_type == "alert" and hasattr(self, 'alert_text_input'):
+                self.alert_text_input.setText(params.get("message", "이미지를 찾을 수 없습니다"))
             
     def _test_search(self):
         """Test image search with current settings"""

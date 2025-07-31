@@ -362,6 +362,9 @@ class TextSearchStep(MacroStep):
     double_click: bool = False  # Whether to double click
     normalize_text: bool = False  # Whether to normalize special characters (e.g., full-width to half-width)
     screen_delay: float = 0.3  # Screen stabilization delay in seconds
+    # NEW: Optional action properties
+    on_found: Optional[Dict[str, Any]] = None
+    on_not_found: Optional[Dict[str, Any]] = None
     
     def validate(self) -> List[str]:
         errors = []
@@ -432,7 +435,10 @@ class TextSearchStep(MacroStep):
             "click_offset": list(self.click_offset),
             "double_click": self.double_click,
             "normalize_text": self.normalize_text,
-            "screen_delay": self.screen_delay
+            "screen_delay": self.screen_delay,
+            # NEW: Optional action properties
+            "on_found": self.on_found,
+            "on_not_found": self.on_not_found
         })
         # Debug logging for save
         if self.excel_column:
@@ -482,7 +488,10 @@ class TextSearchStep(MacroStep):
             click_offset=tuple(click_offset),
             double_click=data.get("double_click", False),
             normalize_text=data.get("normalize_text", False),
-            screen_delay=screen_delay
+            screen_delay=screen_delay,
+            # NEW: Optional action properties
+            on_found=data.get("on_found"),
+            on_not_found=data.get("on_not_found")
         )
 
 # Flow Control Steps
@@ -607,6 +616,9 @@ class ImageSearchStep(MacroStep):
     click_on_found: bool = True
     click_offset: Tuple[int, int] = (0, 0)
     double_click: bool = False
+    # NEW: Optional action properties
+    on_found: Optional[Dict[str, Any]] = None
+    on_not_found: Optional[Dict[str, Any]] = None
     
     def validate(self) -> List[str]:
         errors = []
@@ -624,7 +636,10 @@ class ImageSearchStep(MacroStep):
             "region": list(self.region) if self.region else None,
             "click_on_found": self.click_on_found,
             "click_offset": list(self.click_offset),
-            "double_click": self.double_click
+            "double_click": self.double_click,
+            # NEW: Optional action properties
+            "on_found": self.on_found,
+            "on_not_found": self.on_not_found
         })
         return data
     
@@ -644,7 +659,10 @@ class ImageSearchStep(MacroStep):
             region=tuple(region) if region else None,
             click_on_found=data.get("click_on_found", True),
             click_offset=tuple(click_offset),
-            double_click=data.get("double_click", False)
+            double_click=data.get("double_click", False),
+            # NEW: Optional action properties
+            on_found=data.get("on_found"),
+            on_not_found=data.get("on_not_found")
         )
 
 @dataclass

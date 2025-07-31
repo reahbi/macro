@@ -237,6 +237,99 @@ class TextSearchStepDialog(QDialog):
         click_group.setLayout(click_layout)
         layout.addWidget(click_group)
         
+        # Action options (NEW)
+        action_group = QGroupBox("액션 (선택사항)")
+        action_layout = QVBoxLayout()
+        
+        # Found action
+        found_action_group = QGroupBox("✅ 찾았을 때")
+        found_action_layout = QVBoxLayout()
+        
+        self.on_found_enabled = QCheckBox("액션 활성화")
+        found_action_layout.addWidget(self.on_found_enabled)
+        
+        # Found action type
+        found_type_layout = QHBoxLayout()
+        found_type_layout.addWidget(QLabel("액션:"))
+        self.on_found_action = QComboBox()
+        self.on_found_action.addItems(["클릭", "입력", "계속", "중지", "행 건너뛰기", "재시도"])
+        self.on_found_action.setCurrentIndex(0)  # Default to click
+        self.on_found_action.setEnabled(False)
+        found_type_layout.addWidget(self.on_found_action)
+        found_action_layout.addLayout(found_type_layout)
+        
+        # Found action parameters
+        self.on_found_params_widget = QWidget()
+        self.on_found_params_layout = QVBoxLayout()
+        self.on_found_params_widget.setLayout(self.on_found_params_layout)
+        self.on_found_params_widget.setVisible(False)
+        found_action_layout.addWidget(self.on_found_params_widget)
+        
+        # Found wait time
+        found_wait_layout = QHBoxLayout()
+        found_wait_layout.addWidget(QLabel("대기 시간:"))
+        self.on_found_wait = QDoubleSpinBox()
+        self.on_found_wait.setRange(0.0, 10.0)
+        self.on_found_wait.setSingleStep(0.1)
+        self.on_found_wait.setValue(0.0)
+        self.on_found_wait.setSuffix("초")
+        self.on_found_wait.setEnabled(False)
+        found_wait_layout.addWidget(self.on_found_wait)
+        found_wait_layout.addStretch()
+        found_action_layout.addLayout(found_wait_layout)
+        
+        found_action_group.setLayout(found_action_layout)
+        action_layout.addWidget(found_action_group)
+        
+        # Not found action
+        not_found_action_group = QGroupBox("❌ 못 찾았을 때")
+        not_found_action_layout = QVBoxLayout()
+        
+        self.on_not_found_enabled = QCheckBox("액션 활성화")
+        not_found_action_layout.addWidget(self.on_not_found_enabled)
+        
+        # Not found action type
+        not_found_type_layout = QHBoxLayout()
+        not_found_type_layout.addWidget(QLabel("액션:"))
+        self.on_not_found_action = QComboBox()
+        self.on_not_found_action.addItems(["계속", "중지", "행 건너뛰기", "재시도", "클릭", "입력"])
+        self.on_not_found_action.setCurrentIndex(0)  # Default to continue
+        self.on_not_found_action.setEnabled(False)
+        not_found_type_layout.addWidget(self.on_not_found_action)
+        not_found_action_layout.addLayout(not_found_type_layout)
+        
+        # Not found action parameters
+        self.on_not_found_params_widget = QWidget()
+        self.on_not_found_params_layout = QVBoxLayout()
+        self.on_not_found_params_widget.setLayout(self.on_not_found_params_layout)
+        self.on_not_found_params_widget.setVisible(False)
+        not_found_action_layout.addWidget(self.on_not_found_params_widget)
+        
+        # Not found wait time
+        not_found_wait_layout = QHBoxLayout()
+        not_found_wait_layout.addWidget(QLabel("대기 시간:"))
+        self.on_not_found_wait = QDoubleSpinBox()
+        self.on_not_found_wait.setRange(0.0, 10.0)
+        self.on_not_found_wait.setSingleStep(0.1)
+        self.on_not_found_wait.setValue(0.0)
+        self.on_not_found_wait.setSuffix("초")
+        self.on_not_found_wait.setEnabled(False)
+        not_found_wait_layout.addWidget(self.on_not_found_wait)
+        not_found_wait_layout.addStretch()
+        not_found_action_layout.addLayout(not_found_wait_layout)
+        
+        not_found_action_group.setLayout(not_found_action_layout)
+        action_layout.addWidget(not_found_action_group)
+        
+        action_group.setLayout(action_layout)
+        layout.addWidget(action_group)
+        
+        # Connect action signals
+        self.on_found_enabled.toggled.connect(self._on_found_enabled_toggled)
+        self.on_not_found_enabled.toggled.connect(self._on_not_found_enabled_toggled)
+        self.on_found_action.currentTextChanged.connect(self._on_found_action_changed)
+        self.on_not_found_action.currentTextChanged.connect(self._on_not_found_action_changed)
+        
         # Test button
         self.test_btn = QPushButton("테스트")
         self.test_btn.clicked.connect(self._test_search)
@@ -420,6 +513,83 @@ class TextSearchStepDialog(QDialog):
         # Set click type
         if hasattr(self.step, 'double_click'):
             self.click_type_combo.setCurrentIndex(1 if self.step.double_click else 0)
+        
+        # Load action configurations (NEW)
+        if hasattr(self.step, 'on_found') and self.step.on_found:
+            self.on_found_enabled.setChecked(True)
+            action_type_map = {
+                "클릭": "클릭",
+                "click": "클릭",
+                "입력": "입력",
+                "type": "입력",
+                "계속": "계속",
+                "continue": "계속",
+                "중지": "중지",
+                "stop": "중지",
+                "행_건너뛰기": "행 건너뛰기",
+                "skip_row": "행 건너뛰기",
+                "재시도": "재시도",
+                "retry": "재시도"
+            }
+            action_type = action_type_map.get(self.step.on_found.get("action", "클릭"), "클릭")
+            index = self.on_found_action.findText(action_type)
+            if index >= 0:
+                self.on_found_action.setCurrentIndex(index)
+            
+            # Load parameters
+            params = self.step.on_found.get("params", {})
+            if params.get("wait_time", 0) > 0:
+                self.on_found_wait.setValue(params["wait_time"])
+                
+            # Trigger action change to create parameter widgets
+            self._on_found_action_changed(action_type)
+            
+            # Load action-specific parameters
+            if action_type == "입력" and hasattr(self, 'on_found_text_edit'):
+                self.on_found_text_edit.setText(params.get("text", ""))
+            elif action_type == "클릭" and hasattr(self, 'on_found_offset_x'):
+                self.on_found_offset_x.setValue(params.get("offset_x", 0))
+                self.on_found_offset_y.setValue(params.get("offset_y", 0))
+            elif action_type == "재시도" and hasattr(self, 'on_found_retry_count'):
+                self.on_found_retry_count.setValue(params.get("max_retries", 3))
+                
+        if hasattr(self.step, 'on_not_found') and self.step.on_not_found:
+            self.on_not_found_enabled.setChecked(True)
+            action_type_map = {
+                "계속": "계속",
+                "continue": "계속",
+                "중지": "중지",
+                "stop": "중지",
+                "행_건너뛰기": "행 건너뛰기",
+                "skip_row": "행 건너뛰기",
+                "재시도": "재시도",
+                "retry": "재시도",
+                "클릭": "클릭",
+                "click": "클릭",
+                "입력": "입력",
+                "type": "입력"
+            }
+            action_type = action_type_map.get(self.step.on_not_found.get("action", "계속"), "계속")
+            index = self.on_not_found_action.findText(action_type)
+            if index >= 0:
+                self.on_not_found_action.setCurrentIndex(index)
+            
+            # Load parameters
+            params = self.step.on_not_found.get("params", {})
+            if params.get("wait_time", 0) > 0:
+                self.on_not_found_wait.setValue(params["wait_time"])
+                
+            # Trigger action change to create parameter widgets
+            self._on_not_found_action_changed(action_type)
+            
+            # Load action-specific parameters
+            if action_type == "입력" and hasattr(self, 'on_not_found_text_edit'):
+                self.on_not_found_text_edit.setText(params.get("text", ""))
+            elif action_type == "클릭" and hasattr(self, 'on_not_found_x'):
+                self.on_not_found_x.setValue(params.get("x", 0))
+                self.on_not_found_y.setValue(params.get("y", 0))
+            elif action_type == "재시도" and hasattr(self, 'on_not_found_retry_count'):
+                self.on_not_found_retry_count.setValue(params.get("max_retries", 3))
         
         # Reset loading flag
         self._loading_data = False
@@ -934,6 +1104,124 @@ class TextSearchStepDialog(QDialog):
             traceback.print_exc()
             QMessageBox.critical(self, "오류", f"테스트 중 오류 발생:\n{str(e)}")
         
+    def _on_found_enabled_toggled(self, checked):
+        """Handle found action enabled toggle"""
+        self.on_found_action.setEnabled(checked)
+        self.on_found_wait.setEnabled(checked)
+        if checked:
+            self._on_found_action_changed(self.on_found_action.currentText())
+        else:
+            self.on_found_params_widget.setVisible(False)
+            
+    def _on_not_found_enabled_toggled(self, checked):
+        """Handle not found action enabled toggle"""
+        self.on_not_found_action.setEnabled(checked)
+        self.on_not_found_wait.setEnabled(checked)
+        if checked:
+            self._on_not_found_action_changed(self.on_not_found_action.currentText())
+        else:
+            self.on_not_found_params_widget.setVisible(False)
+            
+    def _on_found_action_changed(self, action_type):
+        """Handle found action type change"""
+        # Clear existing parameter widgets
+        while self.on_found_params_layout.count():
+            child = self.on_found_params_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+                
+        if not self.on_found_enabled.isChecked():
+            self.on_found_params_widget.setVisible(False)
+            return
+            
+        # Add parameter widgets based on action type
+        if action_type == "입력":
+            label = QLabel("입력할 텍스트:")
+            self.on_found_text_edit = QLineEdit()
+            self.on_found_text_edit.setPlaceholderText("예: {{전화번호}}")
+            self.on_found_params_layout.addWidget(label)
+            self.on_found_params_layout.addWidget(self.on_found_text_edit)
+            self.on_found_params_widget.setVisible(True)
+        elif action_type == "클릭":
+            # Click offset parameters
+            offset_layout = QHBoxLayout()
+            offset_layout.addWidget(QLabel("클릭 오프셋:"))
+            offset_layout.addWidget(QLabel("X:"))
+            self.on_found_offset_x = QSpinBox()
+            self.on_found_offset_x.setRange(-100, 100)
+            self.on_found_offset_x.setValue(0)
+            offset_layout.addWidget(self.on_found_offset_x)
+            offset_layout.addWidget(QLabel("Y:"))
+            self.on_found_offset_y = QSpinBox()
+            self.on_found_offset_y.setRange(-100, 100)
+            self.on_found_offset_y.setValue(0)
+            offset_layout.addWidget(self.on_found_offset_y)
+            offset_layout.addStretch()
+            self.on_found_params_layout.addLayout(offset_layout)
+            self.on_found_params_widget.setVisible(True)
+        elif action_type == "재시도":
+            retry_layout = QHBoxLayout()
+            retry_layout.addWidget(QLabel("재시도 횟수:"))
+            self.on_found_retry_count = QSpinBox()
+            self.on_found_retry_count.setRange(1, 10)
+            self.on_found_retry_count.setValue(3)
+            retry_layout.addWidget(self.on_found_retry_count)
+            retry_layout.addStretch()
+            self.on_found_params_layout.addLayout(retry_layout)
+            self.on_found_params_widget.setVisible(True)
+        else:
+            self.on_found_params_widget.setVisible(False)
+            
+    def _on_not_found_action_changed(self, action_type):
+        """Handle not found action type change"""
+        # Clear existing parameter widgets
+        while self.on_not_found_params_layout.count():
+            child = self.on_not_found_params_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+                
+        if not self.on_not_found_enabled.isChecked():
+            self.on_not_found_params_widget.setVisible(False)
+            return
+            
+        # Add parameter widgets based on action type
+        if action_type == "입력":
+            label = QLabel("입력할 텍스트:")
+            self.on_not_found_text_edit = QLineEdit()
+            self.on_not_found_text_edit.setPlaceholderText("예: 데이터 없음")
+            self.on_not_found_params_layout.addWidget(label)
+            self.on_not_found_params_layout.addWidget(self.on_not_found_text_edit)
+            self.on_not_found_params_widget.setVisible(True)
+        elif action_type == "클릭":
+            # Click offset parameters
+            offset_layout = QHBoxLayout()
+            offset_layout.addWidget(QLabel("클릭 위치:"))
+            offset_layout.addWidget(QLabel("X:"))
+            self.on_not_found_x = QSpinBox()
+            self.on_not_found_x.setRange(-9999, 9999)
+            self.on_not_found_x.setValue(0)
+            offset_layout.addWidget(self.on_not_found_x)
+            offset_layout.addWidget(QLabel("Y:"))
+            self.on_not_found_y = QSpinBox()
+            self.on_not_found_y.setRange(-9999, 9999)
+            self.on_not_found_y.setValue(0)
+            offset_layout.addWidget(self.on_not_found_y)
+            offset_layout.addStretch()
+            self.on_not_found_params_layout.addLayout(offset_layout)
+            self.on_not_found_params_widget.setVisible(True)
+        elif action_type == "재시도":
+            retry_layout = QHBoxLayout()
+            retry_layout.addWidget(QLabel("재시도 횟수:"))
+            self.on_not_found_retry_count = QSpinBox()
+            self.on_not_found_retry_count.setRange(1, 10)
+            self.on_not_found_retry_count.setValue(3)
+            retry_layout.addWidget(self.on_not_found_retry_count)
+            retry_layout.addStretch()
+            self.on_not_found_params_layout.addLayout(retry_layout)
+            self.on_not_found_params_widget.setVisible(True)
+        else:
+            self.on_not_found_params_widget.setVisible(False)
+        
     def get_step_data(self) -> Dict[str, Any]:
         """Get step configuration data"""
         # Get excel column value, ensuring it's valid
@@ -983,6 +1271,51 @@ class TextSearchStepDialog(QDialog):
             'double_click': self.click_type_combo.currentIndex() == 1,  # True if "더블 클릭" selected
             'screen_delay': getattr(self.step, 'screen_delay', 0.3)  # Include screen delay
         }
+        
+        # Add action configurations (NEW)
+        if self.on_found_enabled.isChecked():
+            action_type = self.on_found_action.currentText()
+            action_config = {
+                "action": action_type.lower().replace(" ", "_"),
+                "params": {}
+            }
+            
+            # Get action-specific parameters
+            if action_type == "입력" and hasattr(self, 'on_found_text_edit'):
+                action_config["params"]["text"] = self.on_found_text_edit.text()
+            elif action_type == "클릭" and hasattr(self, 'on_found_offset_x'):
+                action_config["params"]["offset_x"] = self.on_found_offset_x.value()
+                action_config["params"]["offset_y"] = self.on_found_offset_y.value()
+            elif action_type == "재시도" and hasattr(self, 'on_found_retry_count'):
+                action_config["params"]["max_retries"] = self.on_found_retry_count.value()
+                
+            # Add wait time if specified
+            if self.on_found_wait.value() > 0:
+                action_config["params"]["wait_time"] = self.on_found_wait.value()
+                
+            result['on_found'] = action_config
+            
+        if self.on_not_found_enabled.isChecked():
+            action_type = self.on_not_found_action.currentText()
+            action_config = {
+                "action": action_type.lower().replace(" ", "_"),
+                "params": {}
+            }
+            
+            # Get action-specific parameters
+            if action_type == "입력" and hasattr(self, 'on_not_found_text_edit'):
+                action_config["params"]["text"] = self.on_not_found_text_edit.text()
+            elif action_type == "클릭" and hasattr(self, 'on_not_found_x'):
+                action_config["params"]["x"] = self.on_not_found_x.value()
+                action_config["params"]["y"] = self.on_not_found_y.value()
+            elif action_type == "재시도" and hasattr(self, 'on_not_found_retry_count'):
+                action_config["params"]["max_retries"] = self.on_not_found_retry_count.value()
+                
+            # Add wait time if specified
+            if self.on_not_found_wait.value() > 0:
+                action_config["params"]["wait_time"] = self.on_not_found_wait.value()
+                
+            result['on_not_found'] = action_config
         
         print(f"DEBUG [get_step_data]: Returning data with excel_column: '{result['excel_column']}'")
         print(f"DEBUG [get_step_data]: Returning data with region: {result['region']}")

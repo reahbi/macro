@@ -24,6 +24,11 @@ class StepExecutor:
         self.variables: Dict[str, Any] = {}
         self.error_handler = get_error_handler()
         
+        # Execution control flags
+        self.stop_execution = False
+        self.skip_to_row_end = False
+        self.retry_count = 0
+        
         # Human-like movement settings from config
         human_config = settings.get("execution", {}).get("human_like_movement", {})
         self.enable_human_movement = human_config.get("enabled", True)
@@ -334,6 +339,73 @@ class StepExecutor:
         else:
             return x, y
             
+    def _execute_search_action(self, action_config: Dict[str, Any], position: Optional[Tuple[int, int]] = None) -> None:
+        """
+        Execute search action (found/not found)
+        
+        Args:
+            action_config: Action configuration with 'action' and 'params'
+            position: Position where text/image was found (None if not found)
+        """
+        if not action_config:
+            return
+            
+        action_type = action_config.get("action", "").lower()
+        params = action_config.get("params", {})
+        
+        self.logger.info(f"Executing search action: {action_type}")
+        
+        # Handle different action types
+        if action_type == "클릭" or action_type == "click":
+            if position:
+                # Click with offset from found position
+                offset_x = params.get("offset_x", 0)
+                offset_y = params.get("offset_y", 0)
+                click_x = position[0] + offset_x
+                click_y = position[1] + offset_y
+                self.logger.info(f"Clicking at ({click_x}, {click_y})")
+                self._click_with_human_delay(click_x, click_y)
+            elif "x" in params and "y" in params:
+                # Click at absolute position (for not found case)
+                click_x = params["x"]
+                click_y = params["y"]
+                self.logger.info(f"Clicking at absolute position ({click_x}, {click_y})")
+                self._click_with_human_delay(click_x, click_y)
+                
+        elif action_type == "입력" or action_type == "type":
+            text = params.get("text", "")
+            if text:
+                # Substitute variables in text
+                text = self._substitute_variables(text)
+                self.logger.info(f"Typing text: {text}")
+                pyautogui.typewrite(text, interval=0.05)
+                
+        elif action_type == "계속" or action_type == "continue":
+            self.logger.info("Continuing to next step")
+            # No special action needed
+            
+        elif action_type == "중지" or action_type == "stop":
+            self.logger.info("Stopping execution")
+            # Set flag to stop execution (will be handled by executor)
+            self.stop_execution = True
+            
+        elif action_type == "행_건너뛰기" or action_type == "skip_row":
+            self.logger.info("Skipping to end of current Excel row")
+            # Set flag to skip to row end (will be handled by macro runner)
+            self.skip_to_row_end = True
+            
+        elif action_type == "재시도" or action_type == "retry":
+            max_retries = params.get("max_retries", 3)
+            self.logger.info(f"Setting retry count: {max_retries}")
+            # This would be handled by the calling method
+            self.retry_count = max_retries
+            
+        # Wait after action if specified
+        wait_time = params.get("wait_time", 0)
+        if wait_time > 0:
+            self.logger.info(f"Waiting {wait_time}s after action")
+            time.sleep(wait_time)
+            
     def _human_like_mouse_move(self, x: int, y: int, duration: Optional[float] = None) -> None:
         """
         사람처럼 자연스러운 마우스 움직임
@@ -640,21 +712,36 @@ class StepExecutor:
                 self.logger.error(f"Error in image search: {e}")
                 return None
         
-        # If image was found and click is requested
-        if location and center and step.click_on_found:
-            # Apply click offset
-            click_x = center[0] + step.click_offset[0]
-            click_y = center[1] + step.click_offset[1]
+        # Handle search results with new action system
+        if location and center:
+            # Image found
+            self.logger.info(f"Image found at location: {location}")
             
-            self.logger.info(f"Clicking at ({click_x}, {click_y})")
+            # Check for new on_found action first
+            if hasattr(step, 'on_found') and step.on_found:
+                self._execute_search_action(step.on_found, center)
+            # Fallback to legacy click behavior
+            elif step.click_on_found:
+                # Apply click offset
+                click_x = center[0] + step.click_offset[0]
+                click_y = center[1] + step.click_offset[1]
+                
+                self.logger.info(f"Clicking at ({click_x}, {click_y})")
+                
+                # Perform click with human-like movement
+                self._click_with_human_delay(click_x, click_y, double_click=step.double_click)
+                
+                if step.double_click:
+                    self.logger.debug("Performed double click with human-like movement")
+                else:
+                    self.logger.debug("Performed single click with human-like movement")
+        else:
+            # Image not found
+            self.logger.info("Image not found")
             
-            # Perform click with human-like movement
-            self._click_with_human_delay(click_x, click_y, double_click=step.double_click)
-            
-            if step.double_click:
-                self.logger.debug("Performed double click with human-like movement")
-            else:
-                self.logger.debug("Performed single click with human-like movement")
+            # Check for new on_not_found action
+            if hasattr(step, 'on_not_found') and step.on_not_found:
+                self._execute_search_action(step.on_not_found, None)
                 
         return location
             
@@ -711,7 +798,7 @@ class StepExecutor:
             # Perform text search with retry logic
             result = self._search_text_with_retry(search_text, region, exact_match, confidence, step, monitor_info)
             
-            # Handle search result
+            # Handle search result with new action system
             if result:
                 self.logger.info(f"======== 텍스트 검색 성공 ========")
                 self.logger.info(f"찾은 텍스트: '{result.text}'")
@@ -719,8 +806,12 @@ class StepExecutor:
                 self.logger.info(f"텍스트 중심점: {result.center}")
                 self.logger.info(f"신뢰도: {result.confidence:.2f}")
                 
-                # Click if requested
-                if click_on_found:
+                # Check for new on_found action first
+                if hasattr(step, 'on_found') and step.on_found:
+                    self.logger.info("Executing on_found action")
+                    self._execute_search_action(step.on_found, result.center)
+                # Fallback to legacy click behavior
+                elif click_on_found:
                     self.logger.info(f"클릭 설정: True, 오프셋: {click_offset}")
                     click_x = result.center[0] + click_offset[0]
                     click_y = result.center[1] + click_offset[1]
@@ -734,6 +825,12 @@ class StepExecutor:
                 # Text not found after all retries
                 self.logger.warning(f"======== 텍스트 검색 실패 ========")
                 self.logger.warning(f"찾을 수 없는 텍스트: '{search_text}'")
+                
+                # Check for new on_not_found action
+                if hasattr(step, 'on_not_found') and step.on_not_found:
+                    self.logger.info("Executing on_not_found action")
+                    self._execute_search_action(step.on_not_found, None)
+                    
                 return None
                     
         except Exception as e:
