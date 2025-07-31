@@ -110,8 +110,15 @@ class PaddleTextExtractor:
         """GPU 사용 가능 여부 확인"""
         try:
             import paddle
-            return paddle.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0
-        except:
+            # GPU가 사용 가능한지 확인
+            is_gpu_available = paddle.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0
+            if is_gpu_available:
+                self.logger.info(f"GPU 감지됨: {paddle.device.cuda.device_count()}개")
+            else:
+                self.logger.info("GPU를 사용할 수 없습니다. CPU 모드로 실행됩니다.")
+            return is_gpu_available
+        except Exception as e:
+            self.logger.debug(f"GPU 확인 중 오류: {e}")
             return False
     
     def _get_ocr(self) -> Optional['PaddleOCR']:
@@ -125,76 +132,50 @@ class PaddleTextExtractor:
             raise RuntimeError(error_msg)
             
         if PaddleTextExtractor._ocr is None:
-            retry_count = 0
-            max_retries = 3
-            
-            while retry_count < max_retries:
+            try:
+                self.logger.info("PaddleOCR 초기화 시작")
+                
+                # PaddleOCR 버전 확인
                 try:
-                    self.logger.info(f"PaddleOCR 초기화 시도 {retry_count + 1}/{max_retries}")
-                    
-                    # PaddleOCR 버전 확인
-                    try:
-                        import paddleocr
-                        if hasattr(paddleocr, '__version__'):
-                            self.logger.info(f"PaddleOCR 버전: {paddleocr.__version__}")
-                    except:
-                        pass
-                    
-                    # GPU 사용 시도
-                    use_gpu = self._check_gpu_availability() if retry_count == 0 else False
-                    
-                    # 재시도 횟수에 따라 다른 초기화 방법 시도
-                    if retry_count == 0:
-                        # 첫 번째 시도: 한국어 PP-OCRv5 모바일 모델 (한국어는 모바일 버전만 지원)
-                        init_params = {
-                            'lang': 'korean',
-                            'text_detection_model_name': 'PP-OCRv5_mobile_det',
-                            'text_recognition_model_name': 'korean_PP-OCRv5_mobile_rec',  # 한국어 전용 모델
-                            'use_angle_cls': True,  # 텍스트 각도 분류
-                            'device': 'gpu' if use_gpu else 'cpu',  # 최신 API 사용
-                            'enable_mkldnn': not use_gpu,  # CPU일 때만 MKL-DNN 사용
-                            'cpu_threads': min(8, multiprocessing.cpu_count()) if not use_gpu else 8,
-                        }
-                        self.logger.info(f"초기화 파라미터 (시도 1 - 한국어 PP-OCRv5): {init_params}")
-                    elif retry_count == 1:
-                        # 두 번째 시도: 기본 lang='korean' 설정
-                        init_params = {
-                            'lang': 'korean',
-                            'device': 'cpu',
-                            'enable_mkldnn': True,
-                            'cpu_threads': 4,
-                        }
-                        self.logger.info(f"초기화 파라미터 (시도 2): {init_params}")
-                    else:
-                        # 세 번째 시도: PP-OCRv3 한국어 모델 (구버전 폴백)
-                        init_params = {
-                            'lang': 'korean',
-                            'ocr_version': 'PP-OCRv3',  # 구버전으로 폴백
-                            'device': 'cpu',
-                        }
-                        self.logger.info(f"초기화 파라미터 (시도 3 - PP-OCRv3 폴백): {init_params}")
-                    
-                    # PaddleOCR 초기화
-                    PaddleTextExtractor._ocr = PaddleOCR(**init_params)
-                    self.logger.info(f"PaddleOCR 초기화 성공 (GPU: {use_gpu})")
-                    break
-                    
-                except Exception as e:
-                    retry_count += 1
-                    self.logger.error(f"초기화 실패 (시도 {retry_count}): {e}")
-                    
-                    if retry_count < max_retries:
-                        time.sleep(2)
-                        # 다음 시도에서는 GPU 비활성화
-                        use_gpu = False
-                    else:
-                        raise RuntimeError(
-                            "PaddleOCR 초기화 실패\n"
-                            "해결 방법:\n"
-                            "1. pip install --upgrade paddleocr paddlepaddle\n"
-                            "2. Visual C++ 재배포 패키지 설치\n"
-                            "3. Python 3.8-3.11 버전 확인"
-                        )
+                    import paddleocr
+                    if hasattr(paddleocr, '__version__'):
+                        self.logger.info(f"PaddleOCR 버전: {paddleocr.__version__}")
+                except:
+                    pass
+                
+                # GPU 사용 가능 여부 확인
+                use_gpu = self._check_gpu_availability()
+                
+                # PP-OCRv5 한국어 모바일 모델만 사용 (한국어는 모바일 버전만 지원)
+                init_params = {
+                    'lang': 'korean',
+                    'text_detection_model_name': 'PP-OCRv5_mobile_det',
+                    'text_recognition_model_name': 'korean_PP-OCRv5_mobile_rec',  # 한국어 전용 모델
+                    'device': 'gpu' if use_gpu else 'cpu',
+                    'enable_mkldnn': not use_gpu,  # CPU일 때만 MKL-DNN 사용
+                    'cpu_threads': min(8, multiprocessing.cpu_count()),
+                    # 불필요한 전처리 모듈 비활성화 (성능 향상)
+                    'use_doc_orientation_classify': False,  # 문서 방향 분류 비활성화
+                    'use_doc_unwarping': False,  # 텍스트 이미지 보정 비활성화
+                    'use_textline_orientation': False,  # 텍스트 라인 방향 분류 비활성화 (use_angle_cls 대체)
+                }
+                
+                self.logger.info(f"초기화 파라미터: {init_params}")
+                
+                # PaddleOCR 초기화
+                PaddleTextExtractor._ocr = PaddleOCR(**init_params)
+                self.logger.info(f"PaddleOCR 초기화 성공 (디바이스: {'GPU' if use_gpu else 'CPU'})")
+                
+            except Exception as e:
+                error_msg = (
+                    f"PaddleOCR 초기화 실패: {str(e)}\n"
+                    "해결 방법:\n"
+                    "1. pip install --upgrade paddleocr paddlepaddle\n"
+                    "2. Visual C++ 재배포 패키지 설치\n"
+                    "3. Python 3.8-3.11 버전 확인"
+                )
+                self.logger.error(error_msg)
+                raise RuntimeError(error_msg) from e
                 
         return PaddleTextExtractor._ocr
     
