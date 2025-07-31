@@ -115,20 +115,26 @@ class CoordinateConverter:
     def qt_to_mss(self, qt_x: int, qt_y: int) -> Tuple[int, int]:
         """Convert Qt global coordinates to mss coordinates
         
-        Note: Both Qt and mss use absolute screen coordinates in multi-monitor setups.
-        No conversion is needed - they use the same coordinate system.
+        Qt uses logical coordinates while mss uses physical pixel coordinates.
+        When DPI scaling is active, we need to multiply by the DPI scale factor.
         """
-        logger.debug(f"Qt to mss: ({qt_x}, {qt_y}) -> ({qt_x}, {qt_y}) (no conversion needed)")
-        return qt_x, qt_y
+        dpi_scale = self.get_dpi_scale()
+        mss_x = int(qt_x * dpi_scale)
+        mss_y = int(qt_y * dpi_scale)
+        logger.debug(f"Qt to mss: ({qt_x}, {qt_y}) -> ({mss_x}, {mss_y}) with DPI scale {dpi_scale}")
+        return mss_x, mss_y
     
     def mss_to_qt(self, mss_x: int, mss_y: int) -> Tuple[int, int]:
         """Convert mss coordinates to Qt global coordinates
         
-        Note: Both Qt and mss use absolute screen coordinates in multi-monitor setups.
-        No conversion is needed - they use the same coordinate system.
+        mss uses physical pixel coordinates while Qt uses logical coordinates.
+        When DPI scaling is active, we need to divide by the DPI scale factor.
         """
-        logger.debug(f"mss to Qt: ({mss_x}, {mss_y}) -> ({mss_x}, {mss_y}) (no conversion needed)")
-        return mss_x, mss_y
+        dpi_scale = self.get_dpi_scale()
+        qt_x = int(mss_x / dpi_scale)
+        qt_y = int(mss_y / dpi_scale)
+        logger.debug(f"mss to Qt: ({mss_x}, {mss_y}) -> ({qt_x}, {qt_y}) with DPI scale {dpi_scale}")
+        return qt_x, qt_y
     
     def get_monitor_at_point(self, x: int, y: int) -> Optional[Dict]:
         """Get monitor information at the given point"""

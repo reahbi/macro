@@ -613,6 +613,7 @@ class ImageSearchStep(MacroStep):
     image_path: str = ""
     confidence: float = 0.9
     region: Optional[tuple] = None  # (x, y, width, height)
+    monitor_info: Optional[Dict[str, Any]] = None  # Monitor information for multi-monitor support
     click_on_found: bool = True
     click_offset: Tuple[int, int] = (0, 0)
     double_click: bool = False
@@ -634,6 +635,7 @@ class ImageSearchStep(MacroStep):
             "image_path": self.image_path,
             "confidence": self.confidence,
             "region": list(self.region) if self.region else None,
+            "monitor_info": self.monitor_info,  # Save monitor info
             "click_on_found": self.click_on_found,
             "click_offset": list(self.click_offset),
             "double_click": self.double_click,
@@ -647,6 +649,7 @@ class ImageSearchStep(MacroStep):
     def from_dict(cls, data: Dict[str, Any]) -> 'ImageSearchStep':
         region = data.get("region")
         click_offset = data.get("click_offset", [0, 0])
+        monitor_info = data.get("monitor_info")  # Load monitor info
         return cls(
             step_id=data.get("step_id", str(uuid.uuid4())),
             name=data.get("name", ""),
@@ -657,6 +660,7 @@ class ImageSearchStep(MacroStep):
             image_path=data.get("image_path", ""),
             confidence=data.get("confidence", 0.9),
             region=tuple(region) if region else None,
+            monitor_info=monitor_info,  # Add monitor info
             click_on_found=data.get("click_on_found", True),
             click_offset=tuple(click_offset),
             double_click=data.get("double_click", False),

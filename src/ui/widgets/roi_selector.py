@@ -142,11 +142,24 @@ class ROISelectorOverlay(QDialog):
             self.selecting = False
             self.end_point = event.globalPos()
             
-            # Calculate selection rectangle
-            x = min(self.start_point.x(), self.end_point.x())
-            y = min(self.start_point.y(), self.end_point.y())
-            w = abs(self.end_point.x() - self.start_point.x())
-            h = abs(self.end_point.y() - self.start_point.y())
+            # Get DPI scale
+            dpi_scale = self.coord_converter.get_dpi_scale()
+            
+            # Calculate selection rectangle in logical coordinates (for Qt)
+            logical_x = min(self.start_point.x(), self.end_point.x())
+            logical_y = min(self.start_point.y(), self.end_point.y())
+            logical_w = abs(self.end_point.x() - self.start_point.x())
+            logical_h = abs(self.end_point.y() - self.start_point.y())
+            
+            # Convert to physical coordinates (for mss)
+            x = int(logical_x * dpi_scale)
+            y = int(logical_y * dpi_scale)
+            w = int(logical_w * dpi_scale)
+            h = int(logical_h * dpi_scale)
+            
+            print(f"DEBUG: DPI scale: {dpi_scale}")
+            print(f"DEBUG: Logical coordinates: ({logical_x}, {logical_y}, {logical_w}, {logical_h})")
+            print(f"DEBUG: Physical coordinates: ({x}, {y}, {w}, {h})")
             
             # Emit result if selection is valid
             if w > 5 and h > 5:
@@ -161,13 +174,9 @@ class ROISelectorOverlay(QDialog):
                 # Find which monitor contains this region
                 monitor_info = self._get_monitor_for_region(x, y, w, h)
                 
-                # Apply DPI scaling if needed
-                dpi_scale = self.coord_converter.get_dpi_scale()
-                
-                # Create result with absolute coordinates only
-                # (mss also uses absolute coordinates, no conversion needed)
+                # Create result with physical coordinates for mss
                 result = {
-                    "region": (int(x), int(y), int(w), int(h)),  # Absolute coordinates
+                    "region": (x, y, w, h),  # Physical coordinates
                     "monitor_info": monitor_info,
                     "dpi_scale": dpi_scale,
                     "timestamp": datetime.now().isoformat()
@@ -177,7 +186,7 @@ class ROISelectorOverlay(QDialog):
                 self.selectionComplete.emit(result)
                 print(f"DEBUG: selectionComplete signal emitted")
                 
-                # Save preview screenshot for debugging
+                # Save preview screenshot for debugging (using physical coordinates)
                 self._save_preview(x, y, w, h)
             else:
                 print(f"DEBUG: ROI selection too small: w={w}, h={h}")

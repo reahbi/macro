@@ -7,7 +7,8 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QPushButton, QLabel, QCheckBox, QSpinBox,
     QDoubleSpinBox, QComboBox, QGroupBox, QMessageBox,
-    QDialogButtonBox, QWidget, QApplication
+    QDialogButtonBox, QWidget, QApplication, QFrame,
+    QRadioButton
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor
@@ -346,6 +347,15 @@ class TextSearchStepDialog(QDialog):
         
         self.setLayout(layout)
     
+    def _clear_layout(self, layout):
+        """Clear all widgets from layout properly"""
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        # Process events to ensure widgets are deleted immediately
+        QApplication.processEvents()
+    
     def accept(self):
         """Validate dialog before accepting"""
         # Check if Excel column is selected but empty
@@ -550,6 +560,11 @@ class TextSearchStepDialog(QDialog):
             elif action_type == "클릭" and hasattr(self, 'on_found_offset_x'):
                 self.on_found_offset_x.setValue(params.get("offset_x", 0))
                 self.on_found_offset_y.setValue(params.get("offset_y", 0))
+                # Load click type (single/double)
+                if hasattr(self, 'on_found_double_click'):
+                    is_double = params.get("double_click", False)
+                    self.on_found_double_click.setChecked(is_double)
+                    self.on_found_single_click.setChecked(not is_double)
             elif action_type == "재시도" and hasattr(self, 'on_found_retry_count'):
                 self.on_found_retry_count.setValue(params.get("max_retries", 3))
                 
@@ -588,6 +603,11 @@ class TextSearchStepDialog(QDialog):
             elif action_type == "클릭" and hasattr(self, 'on_not_found_x'):
                 self.on_not_found_x.setValue(params.get("x", 0))
                 self.on_not_found_y.setValue(params.get("y", 0))
+                # Load click type (single/double)
+                if hasattr(self, 'on_not_found_double_click'):
+                    is_double = params.get("double_click", False)
+                    self.on_not_found_double_click.setChecked(is_double)
+                    self.on_not_found_single_click.setChecked(not is_double)
             elif action_type == "재시도" and hasattr(self, 'on_not_found_retry_count'):
                 self.on_not_found_retry_count.setValue(params.get("max_retries", 3))
         
@@ -1124,11 +1144,8 @@ class TextSearchStepDialog(QDialog):
             
     def _on_found_action_changed(self, action_type):
         """Handle found action type change"""
-        # Clear existing parameter widgets
-        while self.on_found_params_layout.count():
-            child = self.on_found_params_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        # Clear existing parameter widgets using proper cleanup
+        self._clear_layout(self.on_found_params_layout)
                 
         if not self.on_found_enabled.isChecked():
             self.on_found_params_widget.setVisible(False)
@@ -1136,13 +1153,38 @@ class TextSearchStepDialog(QDialog):
             
         # Add parameter widgets based on action type
         if action_type == "입력":
+            # Create frame for better visual organization
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
             label = QLabel("입력할 텍스트:")
             self.on_found_text_edit = QLineEdit()
-            self.on_found_text_edit.setPlaceholderText("예: {{전화번호}}")
-            self.on_found_params_layout.addWidget(label)
-            self.on_found_params_layout.addWidget(self.on_found_text_edit)
+            self.on_found_text_edit.setPlaceholderText("예: {{전화번호}} 또는 고정 텍스트")
+            param_layout.addWidget(label)
+            param_layout.addWidget(self.on_found_text_edit)
+            
+            self.on_found_params_layout.addWidget(param_frame)
             self.on_found_params_widget.setVisible(True)
         elif action_type == "클릭":
+            # Create frame for better visual organization
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
+            # Click type selection
+            click_type_layout = QHBoxLayout()
+            click_type_layout.addWidget(QLabel("클릭 유형:"))
+            self.on_found_single_click = QRadioButton("한번 클릭")
+            self.on_found_double_click = QRadioButton("더블 클릭")
+            self.on_found_single_click.setChecked(True)
+            click_type_layout.addWidget(self.on_found_single_click)
+            click_type_layout.addWidget(self.on_found_double_click)
+            click_type_layout.addStretch()
+            param_layout.addLayout(click_type_layout)
+            
             # Click offset parameters
             offset_layout = QHBoxLayout()
             offset_layout.addWidget(QLabel("클릭 오프셋:"))
@@ -1157,9 +1199,17 @@ class TextSearchStepDialog(QDialog):
             self.on_found_offset_y.setValue(0)
             offset_layout.addWidget(self.on_found_offset_y)
             offset_layout.addStretch()
-            self.on_found_params_layout.addLayout(offset_layout)
+            param_layout.addLayout(offset_layout)
+            
+            self.on_found_params_layout.addWidget(param_frame)
             self.on_found_params_widget.setVisible(True)
         elif action_type == "재시도":
+            # Create frame for better visual organization
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
             retry_layout = QHBoxLayout()
             retry_layout.addWidget(QLabel("재시도 횟수:"))
             self.on_found_retry_count = QSpinBox()
@@ -1167,18 +1217,17 @@ class TextSearchStepDialog(QDialog):
             self.on_found_retry_count.setValue(3)
             retry_layout.addWidget(self.on_found_retry_count)
             retry_layout.addStretch()
-            self.on_found_params_layout.addLayout(retry_layout)
+            param_layout.addLayout(retry_layout)
+            
+            self.on_found_params_layout.addWidget(param_frame)
             self.on_found_params_widget.setVisible(True)
         else:
             self.on_found_params_widget.setVisible(False)
             
     def _on_not_found_action_changed(self, action_type):
         """Handle not found action type change"""
-        # Clear existing parameter widgets
-        while self.on_not_found_params_layout.count():
-            child = self.on_not_found_params_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        # Clear existing parameter widgets using proper cleanup
+        self._clear_layout(self.on_not_found_params_layout)
                 
         if not self.on_not_found_enabled.isChecked():
             self.on_not_found_params_widget.setVisible(False)
@@ -1186,14 +1235,39 @@ class TextSearchStepDialog(QDialog):
             
         # Add parameter widgets based on action type
         if action_type == "입력":
+            # Create frame for better visual organization
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
             label = QLabel("입력할 텍스트:")
             self.on_not_found_text_edit = QLineEdit()
-            self.on_not_found_text_edit.setPlaceholderText("예: 데이터 없음")
-            self.on_not_found_params_layout.addWidget(label)
-            self.on_not_found_params_layout.addWidget(self.on_not_found_text_edit)
+            self.on_not_found_text_edit.setPlaceholderText("예: 데이터 없음 또는 {{상태}} 변수")
+            param_layout.addWidget(label)
+            param_layout.addWidget(self.on_not_found_text_edit)
+            
+            self.on_not_found_params_layout.addWidget(param_frame)
             self.on_not_found_params_widget.setVisible(True)
         elif action_type == "클릭":
-            # Click offset parameters
+            # Create frame for better visual organization
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
+            # Click type selection
+            click_type_layout = QHBoxLayout()
+            click_type_layout.addWidget(QLabel("클릭 유형:"))
+            self.on_not_found_single_click = QRadioButton("한번 클릭")
+            self.on_not_found_double_click = QRadioButton("더블 클릭")
+            self.on_not_found_single_click.setChecked(True)
+            click_type_layout.addWidget(self.on_not_found_single_click)
+            click_type_layout.addWidget(self.on_not_found_double_click)
+            click_type_layout.addStretch()
+            param_layout.addLayout(click_type_layout)
+            
+            # Click position parameters
             offset_layout = QHBoxLayout()
             offset_layout.addWidget(QLabel("클릭 위치:"))
             offset_layout.addWidget(QLabel("X:"))
@@ -1207,9 +1281,17 @@ class TextSearchStepDialog(QDialog):
             self.on_not_found_y.setValue(0)
             offset_layout.addWidget(self.on_not_found_y)
             offset_layout.addStretch()
-            self.on_not_found_params_layout.addLayout(offset_layout)
+            param_layout.addLayout(offset_layout)
+            
+            self.on_not_found_params_layout.addWidget(param_frame)
             self.on_not_found_params_widget.setVisible(True)
         elif action_type == "재시도":
+            # Create frame for better visual organization
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
             retry_layout = QHBoxLayout()
             retry_layout.addWidget(QLabel("재시도 횟수:"))
             self.on_not_found_retry_count = QSpinBox()
@@ -1217,7 +1299,9 @@ class TextSearchStepDialog(QDialog):
             self.on_not_found_retry_count.setValue(3)
             retry_layout.addWidget(self.on_not_found_retry_count)
             retry_layout.addStretch()
-            self.on_not_found_params_layout.addLayout(retry_layout)
+            param_layout.addLayout(retry_layout)
+            
+            self.on_not_found_params_layout.addWidget(param_frame)
             self.on_not_found_params_widget.setVisible(True)
         else:
             self.on_not_found_params_widget.setVisible(False)
@@ -1286,6 +1370,9 @@ class TextSearchStepDialog(QDialog):
             elif action_type == "클릭" and hasattr(self, 'on_found_offset_x'):
                 action_config["params"]["offset_x"] = self.on_found_offset_x.value()
                 action_config["params"]["offset_y"] = self.on_found_offset_y.value()
+                # Save click type (single/double)
+                if hasattr(self, 'on_found_double_click'):
+                    action_config["params"]["double_click"] = self.on_found_double_click.isChecked()
             elif action_type == "재시도" and hasattr(self, 'on_found_retry_count'):
                 action_config["params"]["max_retries"] = self.on_found_retry_count.value()
                 
@@ -1308,6 +1395,9 @@ class TextSearchStepDialog(QDialog):
             elif action_type == "클릭" and hasattr(self, 'on_not_found_x'):
                 action_config["params"]["x"] = self.on_not_found_x.value()
                 action_config["params"]["y"] = self.on_not_found_y.value()
+                # Save click type (single/double)
+                if hasattr(self, 'on_not_found_double_click'):
+                    action_config["params"]["double_click"] = self.on_not_found_double_click.isChecked()
             elif action_type == "재시도" and hasattr(self, 'on_not_found_retry_count'):
                 action_config["params"]["max_retries"] = self.on_not_found_retry_count.value()
                 

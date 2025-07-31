@@ -31,6 +31,7 @@ class ImageStepDialog(QDialog):
         self.image_matcher = ImageMatcher(self.settings)
         self.monitors = get_monitor_info()  # Get monitor information
         self.region = None  # Selected region
+        self.monitor_info = None  # Monitor information for selected region
         
         # Step data
         self.step_data: Dict[str, Any] = {}
@@ -462,51 +463,8 @@ class ImageStepDialog(QDialog):
             monitor_bounds = getattr(self, '_selected_monitor_bounds', None)
             selector = ROISelectorOverlay(parent=None, monitor_bounds=monitor_bounds)
             
-            def on_selection_complete(region):
-                try:
-                    print(f"DEBUG: ROI selection complete with region: {region}, type: {type(region)}")
-                    # Ensure region is properly formatted
-                    if region and len(region) == 4:
-                        # Convert all values to integers to avoid any type issues
-                        formatted_region = tuple(int(x) for x in region)
-                        self.region = formatted_region
-                        self.region_label.setText(
-                            f"선택된 영역: ({formatted_region[0]}, {formatted_region[1]}) "
-                            f"크기: {formatted_region[2]}x{formatted_region[3]}"
-                        )
-                        print(f"DEBUG: set region successful with formatted region: {formatted_region}")
-                    else:
-                        print(f"DEBUG: Invalid region format: {region}")
-                        self.region = None
-                        self.region_label.setText("영역을 선택하세요")
-                    
-                    # Show dialog and ensure it stays visible
-                    self.setVisible(True)
-                    self.show()
-                    self.raise_()
-                    self.activateWindow()
-                    print(f"DEBUG: dialog.show() successful")
-                    
-                    # Force dialog to process events
-                    from PyQt5.QtWidgets import QApplication
-                    QApplication.processEvents()
-                    
-                    # Delay selector cleanup to ensure dialog is fully shown
-                    from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(1000, selector.deleteLater)
-                except Exception as e:
-                    print(f"DEBUG: Error in on_selection_complete: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Still try to show the dialog
-                    self.setVisible(True)
-                    self.show()
-                    self.raise_()
-                    self.activateWindow()
-                    from PyQt5.QtWidgets import QApplication
-                    QApplication.processEvents()
-                    from PyQt5.QtCore import QTimer
-                    QTimer.singleShot(1000, selector.deleteLater)
+            # Connect to the new _on_region_selected method
+            selector.selectionComplete.connect(self._on_region_selected)
                 
             def on_selection_cancelled():
                 self.setVisible(True)
@@ -539,25 +497,40 @@ class ImageStepDialog(QDialog):
         self.search_scope_combo.setCurrentIndex(len(self.monitors) + 1)
         
     def _preview_region(self):
-        """Preview selected region"""
+        """Preview selected region with DPI support"""
         if not self.region:
             QMessageBox.information(self, "알림", "선택된 영역이 없습니다.")
             return
             
         try:
-            # Take screenshot of region
-            import pyautogui
-            x, y, width, height = self.region
-            screenshot = pyautogui.screenshot(region=(x, y, width, height))
-            
-            # Convert to QPixmap
+            # Use mss for DPI-aware screenshot
+            import mss
+            from PIL import Image
             import io
-            bytes_io = io.BytesIO()
-            screenshot.save(bytes_io, format='PNG')
-            bytes_io.seek(0)
             
-            pixmap = QPixmap()
-            pixmap.loadFromData(bytes_io.read())
+            with mss.mss() as sct:
+                # Region is already in physical coordinates
+                x, y, width, height = self.region
+                monitor = {
+                    "left": x,
+                    "top": y,
+                    "width": width,
+                    "height": height
+                }
+                
+                # Capture the region
+                screenshot = sct.grab(monitor)
+                
+                # Convert to PIL Image
+                img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
+                
+                # Convert to QPixmap
+                bytes_io = io.BytesIO()
+                img.save(bytes_io, format='PNG')
+                bytes_io.seek(0)
+                
+                pixmap = QPixmap()
+                pixmap.loadFromData(bytes_io.read())
             
             if pixmap.isNull():
                 QMessageBox.warning(self, "경고", "영역 미리보기를 생성할 수 없습니다.")
@@ -601,6 +574,10 @@ class ImageStepDialog(QDialog):
             # Load region if available
             if hasattr(self.step, 'region') and self.step.region:
                 self.region = self.step.region
+            
+            # Load monitor info if available (for DPI-aware operations)
+            if hasattr(self.step, 'monitor_info'):
+                self.monitor_info = self.step.monitor_info
                 # Set search scope based on region
                 if self.region:
                     # Check if region matches any monitor exactly
@@ -652,6 +629,49 @@ class ImageStepDialog(QDialog):
             return
             
         super().accept()
+    
+    def _on_region_selected(self, result):
+        """Handle region selection with extended info"""
+        try:
+            print(f"DEBUG: _on_region_selected called with result: {result}, type: {type(result)}")
+            
+            # Handle new format with monitor info
+            if isinstance(result, dict):
+                self.region = result.get("region")
+                self.monitor_info = result.get("monitor_info")
+                print(f"DEBUG: Extracted region: {self.region}, monitor_info: {self.monitor_info}")
+            else:
+                # Backward compatibility - old format
+                self.region = result
+                self.monitor_info = None
+                print(f"DEBUG: Using old format, region: {self.region}")
+            
+            # Ensure region is properly formatted
+            if self.region and len(self.region) == 4:
+                # Convert all values to integers to avoid any type issues
+                self.region = tuple(int(x) for x in self.region)
+                self.region_label.setText(
+                    f"선택된 영역: ({self.region[0]}, {self.region[1]}) "
+                    f"크기: {self.region[2]}x{self.region[3]}"
+                )
+                print(f"DEBUG: set region successful with formatted region: {self.region}")
+            else:
+                print(f"DEBUG: Invalid region format: {self.region}")
+                self.region = None
+                self.monitor_info = None
+                self.region_label.setText("영역을 선택하세요")
+        except Exception as e:
+            print(f"DEBUG: Error in _on_region_selected: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            # Always show the dialog again
+            self.setVisible(True)
+            self.show()
+            self.raise_()
+            self.activateWindow()
+            from PyQt5.QtWidgets import QApplication
+            QApplication.processEvents()
 
 class WaitImageStepDialog(ImageStepDialog):
     """Dialog for configuring wait image steps"""
@@ -941,49 +961,183 @@ class ImageSearchStepDialog(ImageStepDialog):
         actions_group.setLayout(actions_layout)
         layout.addWidget(actions_group)
         
-    def _update_found_params(self, action: str):
-        """Update found action parameters based on selected action"""
-        # Clear existing parameters
-        while self.found_param_layout.count():
-            child = self.found_param_layout.takeAt(0)
+    def _clear_layout(self, layout):
+        """Clear all widgets from layout properly"""
+        while layout.count():
+            child = layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+        # Process events to ensure widgets are deleted immediately
+        QApplication.processEvents()
+                
+    def _update_found_params(self, action: str):
+        """Update found action parameters based on selected action"""
+        # Clear existing parameters with immediate deletion
+        self._clear_layout(self.found_param_layout)
                 
         if action == "텍스트 입력":
+            # Create container frame for better layout
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
             label = QLabel("입력할 텍스트:")
             self.found_text_input = QLineEdit()
-            self.found_text_input.setPlaceholderText("{{변수}} 사용 가능")
-            self.found_param_layout.addWidget(label)
-            self.found_param_layout.addWidget(self.found_text_input)
+            self.found_text_input.setPlaceholderText("예: {{전화번호}}, {{고객명}} 등 엑셀 변수 사용 가능")
+            param_layout.addWidget(label)
+            param_layout.addWidget(self.found_text_input)
+            
+            self.found_param_layout.addWidget(param_frame)
+            
+        elif action == "클릭":
+            # Create container frame
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
+            # Click type selection
+            click_type_group = QHBoxLayout()
+            click_type_group.addWidget(QLabel("클릭 유형:"))
+            self.found_single_click_radio = QRadioButton("한번 클릭")
+            self.found_double_click_radio = QRadioButton("더블 클릭")
+            self.found_single_click_radio.setChecked(True)
+            click_type_group.addWidget(self.found_single_click_radio)
+            click_type_group.addWidget(self.found_double_click_radio)
+            click_type_group.addStretch()
+            param_layout.addLayout(click_type_group)
+            
+            # Click offset
+            offset_group = QHBoxLayout()
+            offset_group.addWidget(QLabel("클릭 오프셋:"))
+            offset_group.addWidget(QLabel("X:"))
+            self.found_offset_x_spin = QSpinBox()
+            self.found_offset_x_spin.setRange(-100, 100)
+            self.found_offset_x_spin.setValue(0)
+            offset_group.addWidget(self.found_offset_x_spin)
+            offset_group.addWidget(QLabel("Y:"))
+            self.found_offset_y_spin = QSpinBox()
+            self.found_offset_y_spin.setRange(-100, 100)
+            self.found_offset_y_spin.setValue(0)
+            offset_group.addWidget(self.found_offset_y_spin)
+            offset_group.addStretch()
+            param_layout.addLayout(offset_group)
+            
+            self.found_param_layout.addWidget(param_frame)
+            
+        elif action == "재시도":
+            # Create container frame
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
+            retry_group = QHBoxLayout()
+            retry_group.addWidget(QLabel("최대 재시도 횟수:"))
+            self.found_retry_count_spin = QSpinBox()
+            self.found_retry_count_spin.setMinimum(1)
+            self.found_retry_count_spin.setMaximum(10)
+            self.found_retry_count_spin.setValue(3)
+            retry_group.addWidget(self.found_retry_count_spin)
+            retry_group.addStretch()
+            param_layout.addLayout(retry_group)
+            
+            self.found_param_layout.addWidget(param_frame)
+            
         elif action == "위치 저장":
+            # Create container frame
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
             label = QLabel("변수명:")
             self.found_var_input = QLineEdit()
             self.found_var_input.setPlaceholderText("found_position")
-            self.found_param_layout.addWidget(label)
-            self.found_param_layout.addWidget(self.found_var_input)
+            param_layout.addWidget(label)
+            param_layout.addWidget(self.found_var_input)
+            
+            self.found_param_layout.addWidget(param_frame)
             
     def _update_not_found_params(self, action: str):
         """Update not found action parameters based on selected action"""
-        # Clear existing parameters
-        while self.not_found_param_layout.count():
-            child = self.not_found_param_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        # Clear existing parameters with immediate deletion
+        self._clear_layout(self.not_found_param_layout)
                 
         if action == "재시도":
-            label = QLabel("최대 재시도 횟수:")
+            # Create container frame
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
+            retry_group = QHBoxLayout()
+            retry_group.addWidget(QLabel("최대 재시도 횟수:"))
             self.retry_count_spin = QSpinBox()
             self.retry_count_spin.setMinimum(1)
             self.retry_count_spin.setMaximum(10)
             self.retry_count_spin.setValue(3)
-            self.not_found_param_layout.addWidget(label)
-            self.not_found_param_layout.addWidget(self.retry_count_spin)
+            retry_group.addWidget(self.retry_count_spin)
+            retry_group.addStretch()
+            param_layout.addLayout(retry_group)
+            
+            self.not_found_param_layout.addWidget(param_frame)
+            
         elif action == "경고 표시":
+            # Create container frame
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
             label = QLabel("경고 메시지:")
             self.alert_text_input = QLineEdit()
             self.alert_text_input.setText("이미지를 찾을 수 없습니다")
-            self.not_found_param_layout.addWidget(label)
-            self.not_found_param_layout.addWidget(self.alert_text_input)
+            param_layout.addWidget(label)
+            param_layout.addWidget(self.alert_text_input)
+            
+            self.not_found_param_layout.addWidget(param_frame)
+            
+        elif action == "텍스트 입력":
+            # Create container frame
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
+            label = QLabel("입력할 텍스트:")
+            self.not_found_text_input = QLineEdit()
+            self.not_found_text_input.setPlaceholderText("예: 데이터 없음, {{기본값}} 등")
+            param_layout.addWidget(label)
+            param_layout.addWidget(self.not_found_text_input)
+            
+            self.not_found_param_layout.addWidget(param_frame)
+            
+        elif action == "클릭":
+            # Create container frame
+            param_frame = QFrame()
+            param_frame.setFrameStyle(QFrame.StyledPanel)
+            param_layout = QVBoxLayout(param_frame)
+            param_layout.setSpacing(5)
+            
+            # Click position
+            position_group = QHBoxLayout()
+            position_group.addWidget(QLabel("클릭 위치:"))
+            position_group.addWidget(QLabel("X:"))
+            self.not_found_x_spin = QSpinBox()
+            self.not_found_x_spin.setRange(-9999, 9999)
+            self.not_found_x_spin.setValue(0)
+            position_group.addWidget(self.not_found_x_spin)
+            position_group.addWidget(QLabel("Y:"))
+            self.not_found_y_spin = QSpinBox()
+            self.not_found_y_spin.setRange(-9999, 9999)
+            self.not_found_y_spin.setValue(0)
+            position_group.addWidget(self.not_found_y_spin)
+            position_group.addStretch()
+            param_layout.addLayout(position_group)
+            
+            self.not_found_param_layout.addWidget(param_frame)
         
     def get_custom_data(self) -> Dict[str, Any]:
         """Get search-specific data"""
@@ -994,7 +1148,8 @@ class ImageSearchStepDialog(ImageStepDialog):
             'max_results': self.max_results_spin.value(),
             'click_on_found': self.click_on_found_check.isChecked(),
             'click_offset': (self.offset_x_spin.value(), self.offset_y_spin.value()),
-            'double_click': self.click_type_combo.currentIndex() == 1  # True if "더블 클릭" selected
+            'double_click': self.click_type_combo.currentIndex() == 1,  # True if "더블 클릭" selected
+            'monitor_info': self.monitor_info  # Add monitor info for DPI-aware operations
         }
         
         # NEW: Add optional action properties
