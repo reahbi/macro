@@ -145,35 +145,34 @@ class PaddleTextExtractor:
                     
                     # 재시도 횟수에 따라 다른 초기화 방법 시도
                     if retry_count == 0:
-                        # 첫 번째 시도: PP-OCRv5 명시적 설정
+                        # 첫 번째 시도: 한국어 PP-OCRv5 모바일 모델 (한국어는 모바일 버전만 지원)
                         init_params = {
                             'lang': 'korean',
-                            'ocr_version': 'PP-OCRv5',  # PP-OCRv5 명시
+                            'text_detection_model_name': 'PP-OCRv5_mobile_det',
+                            'text_recognition_model_name': 'korean_PP-OCRv5_mobile_rec',  # 한국어 전용 모델
                             'use_angle_cls': True,  # 텍스트 각도 분류
                             'device': 'gpu' if use_gpu else 'cpu',  # 최신 API 사용
                             'enable_mkldnn': not use_gpu,  # CPU일 때만 MKL-DNN 사용
                             'cpu_threads': min(8, multiprocessing.cpu_count()) if not use_gpu else 8,
                         }
-                        self.logger.info(f"초기화 파라미터 (시도 1): {init_params}")
+                        self.logger.info(f"초기화 파라미터 (시도 1 - 한국어 PP-OCRv5): {init_params}")
                     elif retry_count == 1:
-                        # 두 번째 시도: 모바일 모델 사용 (더 가벼움)
+                        # 두 번째 시도: 기본 lang='korean' 설정
                         init_params = {
                             'lang': 'korean',
-                            'text_detection_model_name': 'PP-OCRv5_mobile_det',
-                            'text_recognition_model_name': 'PP-OCRv5_mobile_rec',
                             'device': 'cpu',
                             'enable_mkldnn': True,
                             'cpu_threads': 4,
                         }
-                        self.logger.info(f"초기화 파라미터 (시도 2 - 모바일 모델): {init_params}")
+                        self.logger.info(f"초기화 파라미터 (시도 2): {init_params}")
                     else:
-                        # 세 번째 시도: 최소 옵션
+                        # 세 번째 시도: PP-OCRv3 한국어 모델 (구버전 폴백)
                         init_params = {
                             'lang': 'korean',
+                            'ocr_version': 'PP-OCRv3',  # 구버전으로 폴백
                             'device': 'cpu',
-                            'ocr_version': 'PP-OCRv5',  # PP-OCRv5 명시
                         }
-                        self.logger.info(f"초기화 파라미터 (시도 3): {init_params}")
+                        self.logger.info(f"초기화 파라미터 (시도 3 - PP-OCRv3 폴백): {init_params}")
                     
                     # PaddleOCR 초기화
                     PaddleTextExtractor._ocr = PaddleOCR(**init_params)
