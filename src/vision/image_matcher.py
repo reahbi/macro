@@ -10,6 +10,7 @@ import cv2
 import pyautogui
 from PIL import Image
 import mss
+from pathlib import Path
 from config.settings import Settings
 from logger.app_logger import get_logger
 
@@ -40,6 +41,8 @@ class ImageMatcher:
         self._template_cache: Dict[str, np.ndarray] = {}
         self._sct = mss.mss()
         self._monitors = self._detect_monitors()
+        self._max_cache_size_mb = 100  # 캐시 크기 제한
+        self._cache_size = 0
         
     def _detect_monitors(self) -> List[MonitorInfo]:
         """Detect all monitors and their properties"""
@@ -70,9 +73,34 @@ class ImageMatcher:
             
         return monitors
         
+    def _normalize_path(self, image_path: str) -> str:
+        """이미지 경로 정규화"""
+        path = Path(image_path)
+        
+        # 절대 경로로 변환
+        if not path.is_absolute():
+            # 리소스 디렉토리 확인
+            resource_paths = [
+                Path("resources/images") / path.name,
+                Path("captures") / path.name,
+                Path(".") / path,
+            ]
+            
+            for rpath in resource_paths:
+                if rpath.exists():
+                    return str(rpath.absolute())
+        
+        return str(path.absolute())
+    
     def _load_template(self, image_path: str, scale: float = 1.0) -> np.ndarray:
         """Load and cache template image with scaling"""
+        # 경로 정규화
+        image_path = self._normalize_path(image_path)
         cache_key = f"{image_path}_{scale}"
+        
+        # 캐시 크기 확인
+        if self._cache_size > self._max_cache_size_mb * 1024 * 1024:
+            self.clear_cache()
         
         if cache_key in self._template_cache:
             return self._template_cache[cache_key]
@@ -94,6 +122,8 @@ class ImageMatcher:
             
             # Cache the processed template
             self._template_cache[cache_key] = template_gray
+            # Update cache size
+            self._cache_size += template_gray.nbytes
             
             return template_gray
             
@@ -381,3 +411,26 @@ class ImageMatcherLegacy:
         except Exception as e:
             self.logger.error(f"Error in legacy find_image: {e}")
             return MatchResult(found=False, confidence=0.0)
+    
+    def clear_cache(self):
+        """캐시 메모리 정리"""
+        self.logger.info(f"Clearing template cache ({self._cache_size / 1024 / 1024:.2f} MB)")
+        self._template_cache.clear()
+        self._cache_size = 0
+    
+    def find_image_adaptive(self, template_path: str, 
+                           initial_confidence: float = 0.9,
+                           min_confidence: float = 0.6,
+                           **kwargs) -> MatchResult:
+        """적응형 신뢰도 검색"""
+        confidence = initial_confidence
+        step = 0.05
+        
+        while confidence >= min_confidence:
+            result = self.find_image(template_path, confidence=confidence, **kwargs)
+            if result.found:
+                self.logger.info(f"Image found at confidence: {confidence}")
+                return result
+            confidence -= step
+        
+        return MatchResult(found=False, confidence=0.0)

@@ -5,17 +5,112 @@ Coordinate system utilities for handling multi-monitor environments
 from typing import Tuple, Dict, Optional, List
 import mss
 from logger.app_logger import get_logger
+from PyQt5.QtWidgets import QApplication
+import ctypes
 
 logger = get_logger(__name__)
 
 
 class CoordinateConverter:
-    """Handles coordinate conversion between different systems"""
+    """Handles coordinate conversion between different systems with DPI awareness"""
     
     def __init__(self):
         self.sct = mss.mss()
         self.monitors = self.sct.monitors
         self.virtual_monitor = self.monitors[0] if self.monitors else None
+        self._dpi_scale = None
+        
+    def get_dpi_scale(self) -> float:
+        """Get DPI scale factor for the system"""
+        if self._dpi_scale is None:
+            try:
+                app = QApplication.instance()
+                if app:
+                    screen = app.primaryScreen()
+                    self._dpi_scale = screen.devicePixelRatio()
+                    logger.info(f"DPI scale detected from Qt: {self._dpi_scale}")
+                else:
+                    # Windows API fallback
+                    try:
+                        user32 = ctypes.windll.user32
+                        user32.SetProcessDPIAware()
+                        dc = user32.GetDC(0)
+                        gdi32 = ctypes.windll.gdi32
+                        dpi = gdi32.GetDeviceCaps(dc, 88)  # LOGPIXELSX
+                        user32.ReleaseDC(0, dc)
+                        self._dpi_scale = dpi / 96.0
+                        logger.info(f"DPI scale from Windows API: {self._dpi_scale}")
+                    except:
+                        self._dpi_scale = 1.0
+                        logger.warning("Failed to detect DPI scale, using 1.0")
+            except Exception as e:
+                logger.error(f"Error getting DPI scale: {e}")
+                self._dpi_scale = 1.0
+                
+        return self._dpi_scale
+    
+    def apply_dpi_scale(self, x: int, y: int) -> Tuple[int, int]:
+        """Apply DPI scaling to coordinates"""
+        scale = self.get_dpi_scale()
+        return int(x * scale), int(y * scale)
+    
+    def remove_dpi_scale(self, x: int, y: int) -> Tuple[int, int]:
+        """Remove DPI scaling from coordinates"""
+        scale = self.get_dpi_scale()
+        return int(x / scale), int(y / scale)
+    
+    def normalize_region(self, region: Tuple[int, int, int, int], 
+                        source_dpi: Optional[float] = None) -> Tuple[int, int, int, int]:
+        """Normalize region coordinates with DPI awareness"""
+        current_dpi = self.get_dpi_scale()
+        
+        if source_dpi and source_dpi != current_dpi:
+            # DPI scale conversion
+            scale_factor = current_dpi / source_dpi
+            x, y, width, height = region
+            return (
+                int(x * scale_factor),
+                int(y * scale_factor),
+                int(width * scale_factor),
+                int(height * scale_factor)
+            )
+        
+        return region
+    
+    def validate_region(self, region: Tuple[int, int, int, int], 
+                       monitor_bounds: Optional[Dict] = None) -> bool:
+        """Validate if region is within valid bounds"""
+        x, y, width, height = region
+        
+        # Basic validation
+        if width <= 0 or height <= 0:
+            logger.warning(f"Invalid region size: {width}x{height}")
+            return False
+        
+        # Check if region is too large
+        if width > 10000 or height > 10000:
+            logger.warning(f"Region too large: {width}x{height}")
+            return False
+        
+        # Monitor bounds validation
+        if monitor_bounds:
+            mon_x = monitor_bounds.get('left', monitor_bounds.get('x', 0))
+            mon_y = monitor_bounds.get('top', monitor_bounds.get('y', 0))
+            mon_w = monitor_bounds.get('width', 1920)
+            mon_h = monitor_bounds.get('height', 1080)
+            
+            # Check if region is within monitor
+            if x < mon_x or y < mon_y:
+                logger.warning(f"Region starts outside monitor: ({x}, {y}) < ({mon_x}, {mon_y})")
+                return False
+            if x + width > mon_x + mon_w:
+                logger.warning(f"Region extends beyond monitor width: {x + width} > {mon_x + mon_w}")
+                return False
+            if y + height > mon_y + mon_h:
+                logger.warning(f"Region extends beyond monitor height: {y + height} > {mon_y + mon_h}")
+                return False
+        
+        return True
         
     def qt_to_mss(self, qt_x: int, qt_y: int) -> Tuple[int, int]:
         """Convert Qt global coordinates to mss coordinates

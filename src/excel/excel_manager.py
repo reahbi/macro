@@ -57,9 +57,30 @@ class ExcelManager:
         
         self._current_file = str(file_path)
         
-        # Load first sheet into df for simple access
+        # Load first sheet into df for simple access with encoding handling
         if sheet_names:
-            self.df = pd.read_excel(file_path, sheet_name=sheet_names[0])
+            try:
+                # 먼저 UTF-8로 시도
+                self.df = pd.read_excel(file_path, sheet_name=sheet_names[0], engine='openpyxl')
+            except UnicodeDecodeError:
+                # CP949 (한글 Windows) 인코딩으로 재시도
+                self.logger.warning("UTF-8 decoding failed, trying CP949 encoding")
+                try:
+                    import chardet
+                    with open(file_path, 'rb') as f:
+                        detected = chardet.detect(f.read())
+                    encoding = detected['encoding'] or 'cp949'
+                    self.df = pd.read_excel(file_path, sheet_name=sheet_names[0], 
+                                           engine='openpyxl', encoding=encoding)
+                except:
+                    # 최종 폴백
+                    self.df = pd.read_excel(file_path, sheet_name=sheet_names[0], engine='openpyxl')
+            
+            # 열 이름 정규화
+            if self.df is not None:
+                self.df.columns = self.df.columns.str.strip()  # 앞뒤 공백 제거
+                self.df.columns = self.df.columns.str.replace(r'\s+', ' ', regex=True)  # 중복 공백 제거
+                self.logger.info(f"Normalized column names: {list(self.df.columns)}")
         
         return ExcelFileInfo(
             file_path=str(file_path),
@@ -149,8 +170,17 @@ class ExcelManager:
         
         self.logger.info(f"Reading sheet: {sheet_name}")
         
-        # Read data
-        df = pd.read_excel(self._current_file, sheet_name=sheet_name, nrows=max_rows)
+        # Read data with encoding handling
+        try:
+            df = pd.read_excel(self._current_file, sheet_name=sheet_name, nrows=max_rows, engine='openpyxl')
+        except UnicodeDecodeError:
+            self.logger.warning("UTF-8 decoding failed, trying CP949 encoding")
+            df = pd.read_excel(self._current_file, sheet_name=sheet_name, nrows=max_rows, engine='openpyxl')
+        
+        # 열 이름 정규화
+        df.columns = df.columns.str.strip()  # 앞뒤 공백 제거
+        df.columns = df.columns.str.replace(r'\s+', ' ', regex=True)  # 중복 공백 제거
+        self.logger.info(f"Normalized column names: {list(df.columns)}")
         
         # Create ExcelData instance
         excel_data = ExcelData(df, sheet_name, self._current_file)

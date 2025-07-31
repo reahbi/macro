@@ -11,6 +11,7 @@ import mss
 from datetime import datetime
 import os
 from pathlib import Path
+from utils.coordinate_utils import get_converter
 
 class ROISelectorOverlay(QDialog):
     """Transparent overlay for ROI selection"""
@@ -33,6 +34,9 @@ class ROISelectorOverlay(QDialog):
         self.sct = mss.mss()
         self.monitors = self.sct.monitors
         self.virtual_monitor = self.monitors[0]  # Combined virtual screen
+        
+        # Coordinate converter for DPI handling
+        self.coord_converter = get_converter()
         
         # UI setup
         # Use flags that work well on Windows
@@ -146,14 +150,26 @@ class ROISelectorOverlay(QDialog):
             
             # Emit result if selection is valid
             if w > 5 and h > 5:
+                # Validate region
+                region = (x, y, w, h)
+                if not self.coord_converter.validate_region(region, self.monitor_bounds):
+                    print(f"DEBUG: Invalid region selected: {region}")
+                    self.selectionCancelled.emit()
+                    self.close()
+                    return
+                
                 # Find which monitor contains this region
                 monitor_info = self._get_monitor_for_region(x, y, w, h)
+                
+                # Apply DPI scaling if needed
+                dpi_scale = self.coord_converter.get_dpi_scale()
                 
                 # Create result with absolute coordinates only
                 # (mss also uses absolute coordinates, no conversion needed)
                 result = {
                     "region": (int(x), int(y), int(w), int(h)),  # Absolute coordinates
                     "monitor_info": monitor_info,
+                    "dpi_scale": dpi_scale,
                     "timestamp": datetime.now().isoformat()
                 }
                 

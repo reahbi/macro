@@ -13,6 +13,7 @@ import math
 from core.macro_types import MacroStep, StepType
 from config.settings import Settings
 from logger.app_logger import get_logger
+from core.error_handler import get_error_handler, ErrorCategory
 
 class StepExecutor:
     """Executes individual macro steps"""
@@ -21,6 +22,7 @@ class StepExecutor:
         self.settings = settings
         self.logger = get_logger(__name__)
         self.variables: Dict[str, Any] = {}
+        self.error_handler = get_error_handler()
         
         # Human-like movement settings from config
         human_config = settings.get("execution", {}).get("human_like_movement", {})
@@ -97,8 +99,39 @@ class StepExecutor:
             self.logger.info(f"단계 실행 완료: {step.name}")
             return result
         except Exception as e:
-            self.logger.error(f"단계 실행 실패: {step.name} - {e}")
-            raise
+            # 오류 카테고리 결정
+            category = self._determine_error_category(step.step_type)
+            
+            # 오류 처리
+            context = {
+                'step': step,
+                'step_name': step.name,
+                'step_type': step.step_type.value
+            }
+            
+            # 복구 시도
+            recovered = self.error_handler.handle_error(e, category, context)
+            
+            if recovered:
+                # 복구 성공 - 재시도
+                self.logger.info("오류 복구 성공 - 재시도")
+                return handler(step)
+            else:
+                # 복구 실패 - 오류 전파
+                self.logger.error(f"단계 실행 실패: {step.name} - {e}")
+                raise
+    
+    def _determine_error_category(self, step_type: StepType) -> ErrorCategory:
+        """단계 타입에 따른 오류 카테고리 결정"""
+        if step_type in [StepType.WAIT_IMAGE]:
+            return ErrorCategory.IMAGE_SEARCH
+        elif step_type in [StepType.WAIT_TEXT]:
+            return ErrorCategory.TEXT_SEARCH
+        elif step_type in [StepType.MOUSE_CLICK, StepType.MOUSE_MOVE, 
+                         StepType.KEYBOARD_TYPE, StepType.KEYBOARD_HOTKEY]:
+            return ErrorCategory.EXECUTION
+        else:
+            return ErrorCategory.GENERAL
             
     def _substitute_variables(self, text: str) -> str:
         """Substitute variables in text"""
@@ -166,9 +199,20 @@ class StepExecutor:
                     search_text = str(self.variables[column_name])
                     self.logger.debug(f"Replaced with Excel data from column '{column_name}': {search_text}")
                 else:
-                    available_cols = list(self.variables.keys())
-                    raise ValueError(f"엑셀 열 '{column_name}'을(를) 현재 행 데이터에서 찾을 수 없습니다. "
-                                   f"사용 가능한 열: {available_cols}")
+                    # 열 이름 정규화 후 재시도
+                    normalized_column = column_name.strip()
+                    found = False
+                    for var_name in self.variables.keys():
+                        if var_name.strip() == normalized_column:
+                            search_text = str(self.variables[var_name])
+                            self.logger.debug(f"Found column after normalization: '{var_name}' -> {search_text}")
+                            found = True
+                            break
+                    
+                    if not found:
+                        available_cols = list(self.variables.keys())
+                        raise ValueError(f"엑셀 열 '{column_name}'을(를) 현재 행 데이터에서 찾을 수 없습니다. "
+                                       f"사용 가능한 열: {available_cols}")
         
         # 3. 레거시 호환성: search_text가 비어있고 excel_column이 있는 경우
         if not search_text:
