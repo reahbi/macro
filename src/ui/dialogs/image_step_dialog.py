@@ -172,9 +172,9 @@ class ImageStepDialog(QDialog):
         
         self.setLayout(layout)
         
-        # Update preview after dialog is shown
+        # Update preview after dialog is shown and sized
         from PyQt5.QtCore import QTimer
-        QTimer.singleShot(100, self._update_preview)
+        QTimer.singleShot(200, self._update_preview)
         
     def add_custom_controls(self, layout: QVBoxLayout):
         """Override to add step-specific controls"""
@@ -329,7 +329,7 @@ class ImageStepDialog(QDialog):
             self.image_path_input.setText(file_path)
             # Delay preview update to ensure dialog is properly sized
             from PyQt5.QtCore import QTimer
-            QTimer.singleShot(50, self._update_preview)
+            QTimer.singleShot(300, self._update_preview)  # Increased delay for better stability
             QMessageBox.information(self, "성공", "클립보드에서 이미지를 붙여넣었습니다.")
         else:
             QMessageBox.information(
@@ -354,15 +354,20 @@ class ImageStepDialog(QDialog):
                 label_width = self.image_preview.width() - 10  # Account for padding
                 label_height = self.image_preview.height() - 10
                 
-                # Scale to fit preview while keeping aspect ratio
-                # Use the smaller of the two dimensions to ensure it fits
-                scaled = pixmap.scaled(
-                    label_width,
-                    label_height,
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation
-                )
-                self.image_preview.setPixmap(scaled)
+                # Only scale if label has valid dimensions
+                if label_width > 0 and label_height > 0:
+                    # Scale to fit preview while keeping aspect ratio
+                    # Use the smaller of the two dimensions to ensure it fits
+                    scaled = pixmap.scaled(
+                        label_width,
+                        label_height,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                    self.image_preview.setPixmap(scaled)
+                else:
+                    # If label dimensions not ready, show unscaled
+                    self.image_preview.setPixmap(pixmap)
                 
                 # Show original size info
                 size_text = f"원본 크기: {pixmap.width()} x {pixmap.height()}"
@@ -565,10 +570,9 @@ class ImageStepDialog(QDialog):
             
             label = QLabel()
             # Scale pixmap if too large
-            if not pixmap.isNull() and (pixmap.width() > 800 or pixmap.height() > 600):
+            if pixmap.width() > 800 or pixmap.height() > 600:
                 pixmap = pixmap.scaled(800, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            if not pixmap.isNull():
-                label.setPixmap(pixmap)
+            label.setPixmap(pixmap)
             layout.addWidget(label)
             
             # Add region info
@@ -961,11 +965,23 @@ class ImageSearchStepDialog(ImageStepDialog):
         """Briefly highlight the found image on screen"""
         try:
             import pyautogui
+            # Temporarily disable fail-safe for controlled mouse movement
+            old_failsafe = pyautogui.FAILSAFE
+            pyautogui.FAILSAFE = False
+            
             x, y = result.center
             # Move mouse to the found location
             pyautogui.moveTo(x, y, duration=0.5)
+            
+            # Restore fail-safe setting
+            pyautogui.FAILSAFE = old_failsafe
             
             # Optional: Draw a rectangle around the found area
             # This would require a temporary overlay window
         except Exception as e:
             print(f"Error highlighting image: {e}")
+            # Make sure to restore fail-safe even on error
+            try:
+                pyautogui.FAILSAFE = True
+            except:
+                pass

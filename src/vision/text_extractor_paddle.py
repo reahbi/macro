@@ -169,7 +169,6 @@ class PaddleTextExtractor:
                         init_params = {
                             'lang': 'korean',
                             'device': 'cpu',  # device 파라미터만 사용
-                            'ocr_version': 'PP-OCRv4',  # 안정적인 버전 명시
                         }
                         self.logger.info(f"초기화 파라미터 (시도 3): {init_params}")
                     

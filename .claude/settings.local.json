@@ -1,45 +1,22 @@
 {
+  "mcpServers": {
+    "@21st-dev/magic": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@21st-dev/magic@latest"
+      ],
+      "env": {
+        "API_KEY": "21403fa232cd76489318f7b360dfe4ea976badedb3a74b21bc8f3d490a317720"
+      }
+    }
+  },
   "permissions": {
     "allow": [
-      "Bash(python -m pytest tests/unit/ -x --tb=short -q)",
-      "Bash(rm:*)",
-      "Bash(python:*)",
-      "Bash(set PYTHONIOENCODING=utf-8)",
-      "Bash(ls:*)",
-      "mcp__server-sequential-thinking__sequentialthinking",
-      "Bash(cmd:*)",
-      "Bash(powershell:*)",
-      "Bash(venv313Scriptsactivate:*)",
-      "Bash(venv313\\\\Scripts\\\\python.exe -m pip install:*)",
-      "Bash(C:\\mag\\macro\\venv313\\Scripts\\python.exe -m pip install --upgrade pip)",
-      "Bash(C:/mag/macro/venv313/Scripts/pip.exe install --upgrade pip)",
-      "Bash(C:/mag/macro/venv313/Scripts/pip.exe install -r requirements_py313.txt)",
-      "Bash(C:/mag/macro/venv313/Scripts/python.exe -c \"import numpy, cv2, easyocr, torch; print(f''NumPy: {numpy.__version__}''); print(f''OpenCV: {cv2.__version__}''); print(f''PyTorch: {torch.__version__}''); print(f''CUDA available: {torch.cuda.is_available()}'')\")",
-      "Bash(C:/mag/macro/venv313/Scripts/python.exe run_workflow_tests.py -v)",
-      "Bash(C:/mag/macro/venv313/Scripts/pip.exe install pytest pytest-timeout)",
-      "Bash(C:/mag/macro/venv313/Scripts/python.exe test_ocr_opencv.py)",
-      "Bash(find:*)",
-      "Bash(wmic:*)",
-      "Bash(dir:*)",
-      "Bash(attrib:*)",
-      "Bash(del test_new_ui.py check_ui_structure.py)",
-      "Bash(grep:*)",
-      "Bash(true)",
-      "Bash(RUN_AUTO_VENV.bat)",
-      "Bash(copy executor.py executor_backup.py)",
-      "Bash(copy executor_fixed.py executor.py)",
-      "Bash(cp:*)",
-      "Bash(git add:*)",
-      "Bash(RUN_SIMPLE.bat)",
-      "Bash(./venv313/Scripts/python.exe test_text_search_fix.py:*)",
-      "Bash(pip show:*)",
-      "Bash(venv311Scriptspip show paddleocr)",
-      "Bash(venv311\\\\Scripts\\\\pip show:*)",
-      "mcp__Context7__resolve-library-id",
-      "mcp__Context7__get-library-docs",
-      "WebFetch(domain:paddlepaddle.github.io)",
-      "Bash(venv311\\\\Scripts\\\\python.exe test_ocr_debug.py:*)",
-      "Bash(cd:*)"
+      "Bash(git commit:*)"
     ],
     "deny": []
   }
