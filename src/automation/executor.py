@@ -372,6 +372,22 @@ class StepExecutor:
                 self.logger.info(f"Clicking at absolute position ({click_x}, {click_y})")
                 self._click_with_human_delay(click_x, click_y)
                 
+        elif action_type == "더블클릭" or action_type == "double_click":
+            if position:
+                # Double click with offset from found position
+                offset_x = params.get("offset_x", 0)
+                offset_y = params.get("offset_y", 0)
+                click_x = position[0] + offset_x
+                click_y = position[1] + offset_y
+                self.logger.info(f"Double clicking at ({click_x}, {click_y})")
+                self._click_with_human_delay(click_x, click_y, double_click=True)
+            elif "x" in params and "y" in params:
+                # Double click at absolute position (for not found case)
+                click_x = params["x"]
+                click_y = params["y"]
+                self.logger.info(f"Double clicking at absolute position ({click_x}, {click_y})")
+                self._click_with_human_delay(click_x, click_y, double_click=True)
+                
         elif action_type == "입력" or action_type == "type":
             text = params.get("text", "")
             if text:

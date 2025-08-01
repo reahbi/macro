@@ -465,19 +465,7 @@ class ImageStepDialog(QDialog):
             
             # Connect to the new _on_region_selected method
             selector.selectionComplete.connect(self._on_region_selected)
-                
-            def on_selection_cancelled():
-                self.setVisible(True)
-                self.show()
-                self.raise_()
-                self.activateWindow()
-                from PyQt5.QtWidgets import QApplication
-                QApplication.processEvents()
-                from PyQt5.QtCore import QTimer
-                QTimer.singleShot(1000, selector.deleteLater)
-                
-            selector.selectionComplete.connect(on_selection_complete)
-            selector.selectionCancelled.connect(on_selection_cancelled)
+            selector.selectionCancelled.connect(lambda: self.show())
             
             # Start selection
             selector.start_selection()
@@ -990,7 +978,7 @@ class ImageSearchStepDialog(ImageStepDialog):
             
             self.found_param_layout.addWidget(param_frame)
             
-        elif action == "클릭":
+        elif action in ["클릭", "더블클릭", "우클릭"]:
             # Create container frame
             param_frame = QFrame()
             param_frame.setFrameStyle(QFrame.StyledPanel)
@@ -1114,7 +1102,7 @@ class ImageSearchStepDialog(ImageStepDialog):
             
             self.not_found_param_layout.addWidget(param_frame)
             
-        elif action == "클릭":
+        elif action in ["클릭", "더블클릭", "우클릭"]:
             # Create container frame
             param_frame = QFrame()
             param_frame.setFrameStyle(QFrame.StyledPanel)
@@ -1170,10 +1158,16 @@ class ImageSearchStepDialog(ImageStepDialog):
             }
             
             # Add action-specific parameters
-            if self.found_action_combo.currentText() == "텍스트 입력" and hasattr(self, 'found_text_input'):
+            action_text = self.found_action_combo.currentText()
+            if action_text == "텍스트 입력" and hasattr(self, 'found_text_input'):
                 on_found["params"]["text"] = self.found_text_input.text()
-            elif self.found_action_combo.currentText() == "위치 저장" and hasattr(self, 'found_var_input'):
+            elif action_text == "위치 저장" and hasattr(self, 'found_var_input'):
                 on_found["params"]["variable"] = self.found_var_input.text()
+            # Handle click types
+            elif action_text in ["클릭", "더블클릭", "우클릭"]:
+                if hasattr(self, 'found_offset_x_spin'):
+                    on_found["params"]["offset_x"] = self.found_offset_x_spin.value()
+                    on_found["params"]["offset_y"] = self.found_offset_y_spin.value()
                 
             # Add wait time if set
             if self.found_wait_spin.value() > 0:
@@ -1196,9 +1190,10 @@ class ImageSearchStepDialog(ImageStepDialog):
             }
             
             # Add action-specific parameters
-            if self.not_found_action_combo.currentText() == "재시도" and hasattr(self, 'retry_count_spin'):
+            action_text = self.not_found_action_combo.currentText()
+            if action_text == "재시도" and hasattr(self, 'retry_count_spin'):
                 on_not_found["params"]["max_retries"] = self.retry_count_spin.value()
-            elif self.not_found_action_combo.currentText() == "경고 표시" and hasattr(self, 'alert_text_input'):
+            elif action_text == "경고 표시" and hasattr(self, 'alert_text_input'):
                 on_not_found["params"]["message"] = self.alert_text_input.text()
                 
             data["on_not_found"] = on_not_found
@@ -1254,10 +1249,13 @@ class ImageSearchStepDialog(ImageStepDialog):
             self._update_found_params(action_text)
             
             # Load action-specific parameters
-            if action_type == "type" and hasattr(self, 'found_text_input'):
+            if action_text == "텍스트 입력" and hasattr(self, 'found_text_input'):
                 self.found_text_input.setText(params.get("text", ""))
-            elif action_type == "save_position" and hasattr(self, 'found_var_input'):
+            elif action_text == "위치 저장" and hasattr(self, 'found_var_input'):
                 self.found_var_input.setText(params.get("variable", ""))
+            elif action_text in ["클릭", "더블클릭", "우클릭"] and hasattr(self, 'found_offset_x_spin'):
+                self.found_offset_x_spin.setValue(params.get("offset_x", 0))
+                self.found_offset_y_spin.setValue(params.get("offset_y", 0))
                 
         if self.step and hasattr(self.step, 'on_not_found') and self.step.on_not_found:
             self.enable_not_found_action_check.setChecked(True)
@@ -1282,9 +1280,9 @@ class ImageSearchStepDialog(ImageStepDialog):
             
             # Load action-specific parameters
             params = self.step.on_not_found.get("params", {})
-            if action_type == "retry" and hasattr(self, 'retry_count_spin'):
+            if action_text == "재시도" and hasattr(self, 'retry_count_spin'):
                 self.retry_count_spin.setValue(params.get("max_retries", 3))
-            elif action_type == "alert" and hasattr(self, 'alert_text_input'):
+            elif action_text == "경고 표시" and hasattr(self, 'alert_text_input'):
                 self.alert_text_input.setText(params.get("message", "이미지를 찾을 수 없습니다"))
             
     def _test_search(self):

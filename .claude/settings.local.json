@@ -16,7 +16,7 @@
   },
   "permissions": {
     "allow": [
-      "mcp__server-sequential-thinking__sequentialthinking"
+      "Bash(git add:*)"
     ],
     "deny": []
   }

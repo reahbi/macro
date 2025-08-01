@@ -647,6 +647,9 @@ class MacroFlowWidget(QWidget):
                     step.click_on_found = step_data.get('click_on_found', True)
                     step.click_offset = step_data.get('click_offset', (0, 0))
                     step.double_click = step_data.get('double_click', False)
+                    # Save action configurations
+                    step.on_found = step_data.get('on_found')
+                    step.on_not_found = step_data.get('on_not_found')
                     self._rebuild_ui()
                     self.stepEdited.emit(step)
                     
@@ -688,6 +691,9 @@ class MacroFlowWidget(QWidget):
                     step.click_offset = step_data['click_offset']
                     step.double_click = step_data.get('double_click', False)
                     step.normalize_text = step_data.get('normalize_text', False)
+                    # Save action configurations
+                    step.on_found = step_data.get('on_found')
+                    step.on_not_found = step_data.get('on_not_found')
                     
                     # Validate the step immediately after update
                     validation_errors = step.validate()
